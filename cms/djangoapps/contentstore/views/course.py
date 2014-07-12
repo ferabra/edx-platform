@@ -262,14 +262,14 @@ def course_index(request, course_key):
         'lms_link': lms_link,
         'sections': sections,
         'course_structure': course_structure,
-        'initial_state': _create_course_outline_initial_state(request, course_structure),
+        'initial_state': _course_outline_initial_state(request, course_structure),
         'course_graders': json.dumps(
             CourseGradingModel.fetch(course_key).graders
         ),
     })
 
 
-def _create_course_outline_initial_state(request, course_structure):
+def _course_outline_initial_state(request, course_structure):
     """
     Returns the desired initial state for the course outline view. If the 'show' request parameter
     was provided, then the view's initial state will be to have the desired item fully expanded

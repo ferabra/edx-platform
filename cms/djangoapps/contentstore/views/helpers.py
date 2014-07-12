@@ -149,4 +149,3 @@ def xblock_primary_child_category(xblock):
     elif category == 'sequential':
         return 'vertical'
     return None
-

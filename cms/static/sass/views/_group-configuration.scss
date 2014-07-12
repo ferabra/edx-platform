@@ -349,8 +349,6 @@
           }
 
           .group-configuration-id {
-            @include font-size(14);
-            @include line-height(18);
             display: inline-block;
             width: 45%;
             text-align: right;

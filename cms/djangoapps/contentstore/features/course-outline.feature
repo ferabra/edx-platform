@@ -18,7 +18,7 @@ Feature: CMS.Course Outline
     Scenario: Collapse link appears after creating first section of a course
         Given I have a course with no sections
         When I navigate to the course outline page
-        And I   add a section
+        And I add a section
         Then I see the "Collapse All Sections" link
         And all sections are expanded
 

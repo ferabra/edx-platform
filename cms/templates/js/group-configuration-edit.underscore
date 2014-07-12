@@ -15,7 +15,7 @@
                         <span class="group-configuration-value"><%= id %></span>
                     </span><%
                 }
-                %><span class="tip tip-stacked"><%= gettext("Name or short description of the configuration") %></span>
+                %>
                 <input id="group-configuration-name-<%= uniqueId %>" class="group-configuration-name-input input-text" name="group-configuration-name" type="text" placeholder="<%= gettext("This is the Name of the Group Configuration") %>" value="<%= name %>">
                 <span class="tip tip-stacked"><%= gettext("Name or short description of the configuration") %></span>
             </div>

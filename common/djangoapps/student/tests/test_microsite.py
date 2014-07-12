@@ -14,7 +14,7 @@ def fake_site_name(name, default=None):  # pylint: disable=W0613
     if name == 'SITE_NAME':
         return 'openedx.localhost'
     else:
-        return None
+        return default
 
 
 class TestMicrosite(TestCase):

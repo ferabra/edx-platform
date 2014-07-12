@@ -196,8 +196,8 @@ def container_handler(request, usage_key_string):
         assert section is not None, "Could not determine ancestor section from unit " + unicode(unit.location)
 
         # Fetch the XBlock info for use by the container page. Note that it includes information
-        # about the block's ancestors and siblings so that it can be d
-        xblock_info = create_xblock_info(xblock, include_ancestor_info=True)
+        # about the block's ancestors and siblings for use by the Unit Outline.
+        xblock_info = create_xblock_info(xblock, include_ancestor_info=is_unit_page)
 
         # Create the link for preview.
         preview_lms_base = settings.FEATURES.get('PREVIEW_LMS_BASE')

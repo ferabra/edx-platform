@@ -40,8 +40,8 @@ REQUIREJS_WAIT = {
     # Content - Outline
     # Note that calling your org, course number, or display name, 'course' will mess this up
     re.compile('^Course Outline \|'): [
-        "jquery", "backbone", "js/views/pages/course_outline", "js/models/xblock_outline_info",
-        "js/views/baseview"],
+        "js/base", "js/models/course", "js/models/location", "js/models/section",
+        "js/views/overview", "js/views/section_edit"],
 
     # Dashboard
     re.compile('^My Courses \|'): [

@@ -183,7 +183,7 @@ define([
                 notificationSpy = view_helpers.createNotificationSpy(),
                 groups;
 
-            this.model.get('groups').add([{ name: 'Group C' }]);
+            this.view.$('.action-add-group').click();
             setValuesToInputs(this.view, {
                 inputName: 'New Configuration',
                 inputDescription: 'New Description'
@@ -217,7 +217,7 @@ define([
         });
 
         it('does not save on cancel', function() {
-            this.model.get('groups').add([{ name: 'Group C' }]);
+            this.view.$('.action-add-group').click();
             setValuesToInputs(this.view, {
                 inputName: 'New Configuration',
                 inputDescription: 'New Description'

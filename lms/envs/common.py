@@ -39,7 +39,7 @@ from lms.lib.xblock.mixin import LmsBlockMixin
 
 ################################### FEATURES ###################################
 # The display name of the platform to be used in templates/emails/etc.
-PLATFORM_NAME = "Your Platform Name Here"
+PLATFORM_NAME = "E-Huesped"
 CC_MERCHANT_NAME = PLATFORM_NAME
 PLATFORM_TWITTER_ACCOUNT = "@YourPlatformTwitterAccount"
 PLATFORM_FACEBOOK_ACCOUNT = "http://www.facebook.com/YourPlatformFacebookAccount"

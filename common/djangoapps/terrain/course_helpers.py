@@ -1,13 +1,12 @@
-# pylint: disable=C0111
-# pylint: disable=W0621
+# pylint: disable=missing-docstring
+# pylint: disable=redefined-outer-name
 
 import urllib
 from lettuce import world
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import User
 from student.models import CourseEnrollment
-from xmodule.modulestore.django import modulestore
-from xmodule.modulestore import ModuleStoreEnum
-from xmodule.contentstore.django import contentstore
+from xmodule.modulestore.django import modulestore, clear_existing_modulestores
+from xmodule.contentstore.django import _CONTENTSTORE
 
 
 @world.absorb
@@ -34,7 +33,7 @@ def log_in(username='robot', password='test', email='robot@edx.org', name="Robot
     Use the auto_auth feature to programmatically log the user in
     """
     url = '/auto_auth'
-    params = { 'username': username, 'password': password, 'email': email, 'full_name': name }
+    params = {'username': username, 'password': password, 'email': email, 'full_name': name}
     url += "?" + urllib.urlencode(params)
     world.visit(url)
 
@@ -72,6 +71,6 @@ def clear_courses():
     # (though it shouldn't), do this manually
     # from the bash shell to drop it:
     # $ mongo test_xmodule --eval "db.dropDatabase()"
-    store = modulestore()._get_modulestore_by_type(ModuleStoreEnum.Type.mongo)
-    store.collection.drop()
-    contentstore().fs_files.drop()
+    modulestore()._drop_database()  # pylint: disable=protected-access
+    _CONTENTSTORE.clear()
+    clear_existing_modulestores()

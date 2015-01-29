@@ -1,36 +1,28 @@
-define(['js/views/baseview', 'jquery', 'js/views/group_configuration_details'],
-function(BaseView, $, GroupConfigurationDetailsView) {
+/**
+ * This class defines a list view for content experiment group configurations.
+ * It is expected to be backed by a GroupConfiguration collection.
+ */
+define([
+    'js/views/list', 'js/views/group_configuration_item', 'gettext'
+], function(ListView, GroupConfigurationItemView, gettext) {
     'use strict';
-    var GroupConfigurationsList = BaseView.extend({
+
+    var GroupConfigurationsListView = ListView.extend({
         tagName: 'div',
+
         className: 'group-configurations-list',
-        events: { },
 
-        initialize: function() {
-            this.emptyTemplate = this.loadTemplate('no-group-configurations');
-            this.listenTo(this.collection, 'all', this.render);
-        },
+        newModelOptions: {addDefaultGroups: true},
 
-        render: function() {
-            var configurations = this.collection;
-            if(configurations.length === 0) {
-                this.$el.html(this.emptyTemplate());
-            } else {
-                var frag = document.createDocumentFragment();
+        // Translators: this refers to a collection of groups.
+        itemCategoryDisplayName: gettext('group configuration'),
 
-                configurations.each(function(configuration) {
-                    var view = new GroupConfigurationDetailsView({
-                        model: configuration
-                    });
+        emptyMessage: gettext('You have not created any group configurations yet.'),
 
-                    frag.appendChild(view.render().el);
-                });
-
-                this.$el.html([frag]);
-            }
-            return this;
+        createItemView: function(options) {
+            return new GroupConfigurationItemView(options);
         }
     });
 
-    return GroupConfigurationsList;
+    return GroupConfigurationsListView;
 });

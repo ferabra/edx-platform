@@ -7,15 +7,18 @@ from django.test.client import RequestFactory
 from django.test.utils import override_settings
 from markupsafe import escape
 
-from courseware.tests.tests import TEST_DATA_MIXED_MODULESTORE
+from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE
 from student.tests.factories import UserFactory, CourseEnrollmentFactory
+from edxmako.tests import mako_middleware_process_request
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory
 
 from instructor.views import legacy
 
+# pylint: disable=missing-docstring
 
-@override_settings(MODULESTORE=TEST_DATA_MIXED_MODULESTORE)
+
+@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
 class TestXss(ModuleStoreTestCase):
     def setUp(self):
         self._request_factory = RequestFactory()
@@ -42,12 +45,14 @@ class TestXss(ModuleStoreTestCase):
         Build a request with the given action, call the instructor dashboard
         view, and check that HTML code in a user's name is properly escaped.
         """
-        req  = self._request_factory.post(
+        req = self._request_factory.post(
             "dummy_url",
             data={"action": action}
         )
         req.user = self._instructor
         req.session = {}
+
+        mako_middleware_process_request(req)
         resp = legacy.instructor_dashboard(req, self._course.id.to_deprecated_string())
         respUnicode = resp.content.decode(settings.DEFAULT_CHARSET)
         self.assertNotIn(self._evil_student.profile.name, respUnicode)
@@ -58,6 +63,3 @@ class TestXss(ModuleStoreTestCase):
 
     def test_dump_list_of_enrolled(self):
         self._test_action("Dump list of enrolled students")
-
-    def test_dump_grades(self):
-        self._test_action("Dump Grades for all students in this course")

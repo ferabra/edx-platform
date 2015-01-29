@@ -68,9 +68,9 @@ class Extensions
 
     @$show_unit_extensions.click =>
       @clear_display()
-      @$grid_table.text 'Loading...'
+      @$grid_table.text 'Loading'
 
-      @$url_input = @$section.find("#view-extensions select[name='url']")
+      @$url_input = @$section.find("#view-granted-extensions select[name='url']")
       url = @$show_unit_extensions.data 'endpoint'
       send_data =
         url: @$url_input.val()
@@ -78,22 +78,22 @@ class Extensions
         dataType: 'json'
         url: url
         data: send_data
-        error: (xhr) => @fail_with_error "view-extensions", "Error getting due dates", xhr
+        error: (xhr) => @fail_with_error "view-granted-extensions", "Error getting due dates", xhr
         success: (data) => @display_grid data
 
     @$show_student_extensions.click =>
       @clear_display()
-      @$grid_table.text 'Loading...'
+      @$grid_table.text 'Loading'
 
       url = @$show_student_extensions.data 'endpoint'
-      @$student_input = @$section.find("#view-extensions input[name='student']")
+      @$student_input = @$section.find("#view-granted-extensions input[name='student']")
       send_data =
         student: @$student_input.val()
       $.ajax
         dataType: 'json'
         url: url
         data: send_data
-        error: (xhr) => @fail_with_error "view-extensions", "Error getting due dates", xhr
+        error: (xhr) => @fail_with_error "view-granted-extensions", "Error getting due dates", xhr
         success: (data) => @display_grid data
       
   # handler for when the section title is clicked.

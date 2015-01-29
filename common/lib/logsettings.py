@@ -53,8 +53,9 @@ def get_logger_config(log_dir,
                                              logging_env=logging_env,
                                              hostname=hostname)
 
-    handlers = ['console', 'local'] if debug else ['console',
-                                                   'syslogger-remote', 'local']
+    handlers = ['console', 'local']
+    if syslog_addr:
+        handlers.append('syslogger-remote')
 
     logger_config = {
         'version': 1,
@@ -67,6 +68,11 @@ def get_logger_config(log_dir,
             'syslog_format': {'format': syslog_format},
             'raw': {'format': '%(message)s'},
         },
+        'filters': {
+            'require_debug_false': {
+                '()': 'django.utils.log.RequireDebugFalse',
+            }
+        },
         'handlers': {
             'console': {
                 'level': console_loglevel,
@@ -74,11 +80,10 @@ def get_logger_config(log_dir,
                 'formatter': 'standard',
                 'stream': sys.stderr,
             },
-            'syslogger-remote': {
-                'level': 'INFO',
-                'class': 'logging.handlers.SysLogHandler',
-                'address': syslog_addr,
-                'formatter': 'syslog_format',
+            'mail_admins': {
+                'level': 'ERROR',
+                'filters': ['require_debug_false'],
+                'class': 'django.utils.log.AdminEmailHandler'
             },
             'newrelic': {
                 'level': 'ERROR',
@@ -97,8 +102,22 @@ def get_logger_config(log_dir,
                 'level': 'DEBUG',
                 'propagate': False
             },
+            'django.request': {
+                'handlers': ['mail_admins'],
+                'level': 'ERROR',
+                'propagate': True,
+            },
         }
     }
+    if syslog_addr:
+        logger_config['handlers'].update({
+            'syslogger-remote': {
+                'level': 'INFO',
+                'class': 'logging.handlers.SysLogHandler',
+                'address': syslog_addr,
+                'formatter': 'syslog_format',
+            },
+        })
 
     if dev_env:
         tracking_file_loc = os.path.join(log_dir, tracking_filename)

@@ -63,6 +63,9 @@ def i18n_dummy():
     """
     cmd = "i18n_tool dummy"
     sh(cmd)
+    # Need to then compile the new dummy strings
+    cmd = "i18n_tool generate"
+    sh(cmd)
 
 
 @task
@@ -127,6 +130,46 @@ def i18n_transifex_pull():
     """
     cmd = "i18n_tool transifex"
     sh("{cmd} pull".format(cmd=cmd))
+
+
+@task
+def i18n_rtl():
+    """
+    Pull all RTL translations (reviewed AND unreviewed) from Transifex
+    """
+    cmd = "i18n_tool transifex"
+    sh(cmd + " rtl")
+
+    print("Now generating langugage files...")
+
+    cmd = "i18n_tool generate"
+
+    sh(cmd + " --rtl")
+
+    print("Committing translations...")
+    sh('git clean -fdX conf/locale')
+    sh('git add conf/locale')
+    sh('git commit --amend')
+
+
+@task
+def i18n_ltr():
+    """
+    Pull all LTR translations (reviewed AND unreviewed) from Transifex
+    """
+    cmd = "i18n_tool transifex"
+    sh(cmd + " ltr")
+
+    print("Now generating langugage files...")
+
+    cmd = "i18n_tool generate"
+
+    sh(cmd + " --ltr")
+
+    print("Committing translations...")
+    sh('git clean -fdX conf/locale')
+    sh('git add conf/locale')
+    sh('git commit --amend')
 
 
 @task

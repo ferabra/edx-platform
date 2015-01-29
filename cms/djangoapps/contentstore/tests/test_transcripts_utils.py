@@ -18,7 +18,7 @@ from xmodule.modulestore.tests.factories import CourseFactory
 from xmodule.contentstore.content import StaticContent
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from xmodule.exceptions import NotFoundError
-from xmodule.contentstore.django import contentstore, _CONTENTSTORE
+from xmodule.contentstore.django import contentstore
 from xmodule.video_module import transcripts_utils
 
 TEST_DATA_CONTENTSTORE = copy.deepcopy(settings.CONTENTSTORE)
@@ -151,8 +151,6 @@ class TestSaveSubsToStore(ModuleStoreTestCase):
 
     def tearDown(self):
         self.clear_subs_content()
-        contentstore().drop_database()
-        _CONTENTSTORE.clear()
 
 
 @override_settings(CONTENTSTORE=TEST_DATA_CONTENTSTORE)
@@ -162,7 +160,6 @@ class TestDownloadYoutubeSubs(ModuleStoreTestCase):
     org = 'MITx'
     number = '999'
     display_name = 'Test course'
-
 
     def clear_sub_content(self, subs_id):
         """
@@ -188,10 +185,6 @@ class TestDownloadYoutubeSubs(ModuleStoreTestCase):
     def setUp(self):
         self.course = CourseFactory.create(
             org=self.org, number=self.number, display_name=self.display_name)
-
-    def tearDown(self):
-        contentstore().drop_database()
-        _CONTENTSTORE.clear()
 
     def test_success_downloading_subs(self):
 
@@ -478,6 +471,7 @@ class TestYoutubeTranscripts(unittest.TestCase):
         self.assertEqual(transcripts, expected_transcripts)
         mock_get.assert_called_with('http://video.google.com/timedtext', params={'lang': 'en', 'v': 'good_youtube_id'})
 
+
 class TestTranscript(unittest.TestCase):
     """
     Tests for Transcript class e.g. different transcript conversions.
@@ -494,7 +488,6 @@ class TestTranscript(unittest.TestCase):
             At the left we can see...
 
         """)
-
 
         self.sjson_transcript = textwrap.dedent("""\
             {

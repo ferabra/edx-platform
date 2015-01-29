@@ -1,21 +1,49 @@
 // studio - elements - forms
 // ====================
 
-// forms - general
+// Table of Contents
+// * +Forms - General
+// * +Field - Is Editable
+// * +Field - With Error
+// * +Forms - Additional UI
+// * +Form - Create New
+// * +Form - Inline Name Edit
+// * +Form - Create New Wrapper
+// * +Form - Grandfathered
+
+// +Forms - General
+// ====================
+// element-specific utilities
+// --------------------
+// UI: checkbox/radio inputs
+%input-tickable {
+
+  ~ label {
+    color: $color-copy-base;
+  }
+
+  // STATE: checked/selected
+  &:checked ~ label {
+    @extend %t-strong;
+    color: $ui-action-primary-color-focus;
+  }
+}
+
 input[type="text"],
 input[type="email"],
 input[type="password"],
 textarea.text {
-  padding: 6px 8px 8px;
   @include box-sizing(border-box);
+  @include linear-gradient($gray-l5, $white);
+  @extend %t-copy-sub2;
+  @extend %t-demi-strong;
+  padding: 6px 8px 8px;
   border: 1px solid $gray-l2;
   border-radius: 2px;
-  @include linear-gradient($gray-l5, $white);
   background-color: $gray-l5;
   box-shadow: inset 0 1px 2px $shadow-l1;
   font-family: 'Open Sans', sans-serif;
-  font-size: 11px;
-  color: $baseFontColor;
+  color: $color-copy-emphasized;
   outline: 0;
 
   &::-webkit-input-placeholder,
@@ -30,9 +58,8 @@ textarea.text {
   }
 }
 
-// ====================
-
-// forms - fields - not editable
+// +Fields - Not Editable
+// ==================== 
 .field.is-not-editable {
 
   & label.is-focused {
@@ -44,9 +71,8 @@ textarea.text {
   }
 }
 
-// ====================
-
-// field with error
+// +Fields - With Error
+// ==================== 
 .field.error {
 
   input, textarea {
@@ -54,14 +80,62 @@ textarea.text {
   }
 }
 
-// ====================
-
-// forms - additional UI
+// +Forms - Additional UI
+// ==================== 
 form {
 
-  input[type=file] {
-    @include font-size(14);
-    line-height: 1;
+  // CASE: cosmetic checkbox input
+  .checkbox-cosmetic {
+
+    .input-checkbox-checked, .input-checkbox-unchecked, .label {
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .input-checkbox-checked, .input-checkbox-unchecked {
+      width: ($baseline*0.75);
+    }
+
+    .input-checkbox {
+      @extend %cont-text-sr;
+
+      // CASE: unchecked
+      ~ label .input-checkbox-checked {
+        display: none;
+      }
+
+      ~ label .input-checkbox-unchecked {
+        display: inline-block;
+      }
+
+      // CASE: checked
+      &:checked {
+
+        ~ label .input-checkbox-checked {
+          display: inline-block;
+        }
+
+        ~ label .input-checkbox-unchecked {
+          display: none;
+        }
+      }
+
+    }
+  }
+
+  // CASE: checkbox input
+  .field-checkbox .input-checkbox {
+    @extend %input-tickable;
+  }
+
+  // CASE: radio input
+  .field-radio .input-radio {
+    @extend %input-tickable;
+  }
+
+  // CASE: file input
+  input[type="file"] {
+    @extend %t-copy-sub1;
   }
 
   .note {
@@ -98,33 +172,16 @@ form {
   }
 }
 
-// ELEM: form wrapper
-.wrapper-create-element {
-  height: 0;
-  margin-bottom: $baseline;
-  opacity: 0.0;
-  pointer-events: none;
-  overflow: hidden;
-
-  &.animate {
-    @include transition(opacity $tmg-f1 ease-in-out 0s, height $tmg-f1 ease-in-out 0s);
-  }
-
-  &.is-shown {
-    height: auto; // define a specific height for the animating version of this UI to work properly
-    opacity: 1.0;
-    pointer-events: auto;
-  }
-}
-
-// ELEM: form
+// +Form - Create New
+// ==================== 
 // form styling for creating a new content item (course, user, textbook)
-form[class^="create-"] {
+// TODO: refactor this into a placeholder to extend.
+.form-create {
   @extend %ui-window;
 
   .title {
     @extend %t-title4;
-    font-weight: 600;
+    @extend %t-strong;
     padding: $baseline ($baseline*1.5) 0 ($baseline*1.5);
   }
 
@@ -146,7 +203,7 @@ form[class^="create-"] {
       &.required {
 
         label {
-          font-weight: 600;
+          @extend %t-strong;
         }
 
         label:after {
@@ -214,10 +271,17 @@ form[class^="create-"] {
 
       .tip {
         @extend %t-copy-sub2;
-        @include transition(color, 0.15s, ease-in-out);
+        @include transition(color 0.15s ease-in-out);
+
+
         display: block;
         margin-top: ($baseline/4);
         color: $gray-l3;
+      }
+
+      .tip-note {
+        display: block;
+        margin-top: ($baseline/4);
       }
 
       .tip-error {
@@ -308,9 +372,9 @@ form[class^="create-"] {
 
     .action {
       @include transition(all $tmg-f2 linear 0s);
+      @extend %t-strong;
       display: inline-block;
       padding: ($baseline/5) $baseline;
-      font-weight: 600;
       text-transform: uppercase;
     }
 
@@ -326,15 +390,75 @@ form[class^="create-"] {
   }
 }
 
-// ====================
+// +Form - Inline Name Edit 
+// ==================== 
+// form - inline xblock name edit on unit, container, outline
+// TODO: abstract this out into a Sass placeholder
+.incontext-editor.is-editable {
 
-// forms - grandfathered
+  .incontext-editor-value,
+  .incontext-editor-action-wrapper {
+    @extend %cont-truncated;
+    display: inline-block;
+    vertical-align: middle;
+    max-width: 80%;
+  }
+
+  .incontext-editor-open-action {
+    @extend %ui-btn-non-blue;
+    @extend %t-copy-base;
+    padding-top: ($baseline/10);
+
+    .icon.icon {
+      vertical-align: baseline;
+    }
+  }
+
+  .incontext-editor-form {
+    display: none;
+  }
+
+  &.is-editing {
+
+    .incontext-editor-value,
+    .incontext-editor-action-wrapper {
+      display: none;
+    }
+
+    .incontext-editor-form {
+      display: inline-block;
+    }
+  }
+}
+
+// +Form - Create New Wrapper 
+// ==================== 
+.wrapper-create-element {
+  height: 0;
+  opacity: 0.0;
+  pointer-events: none;
+  overflow: hidden;
+
+  &.animate {
+    @include transition(opacity $tmg-f1 ease-in-out 0s, height $tmg-f1 ease-in-out 0s);
+  }
+
+  &.is-shown {
+    height: auto; // define a specific height for the animating version of this UI to work properly
+    margin-bottom: $baseline;
+    opacity: 1.0;
+    pointer-events: auto;
+  }
+}
+
+// +Form - Grandfathered 
+// ==================== 
 input.search {
   padding: 6px 15px 8px 30px;
   @include box-sizing(border-box);
   border: 1px solid $darkGrey;
   border-radius: 20px;
-  background: url(../img/search-icon.png) no-repeat 8px 7px #edf1f5;
+  background: url(../images/search-icon.png) no-repeat 8px 7px #edf1f5;
   font-family: 'Open Sans', sans-serif;
   color: $baseFontColor;
   outline: 0;
@@ -345,7 +469,7 @@ input.search {
 }
 
 label {
-  font-size: 12px;
+  @extend %t-copy-sub2;
 }
 
 code {
@@ -356,8 +480,9 @@ code {
 }
 
 .CodeMirror {
-  font-size: 13px;
-  background: #fff;
+  @extend %t-copy-sub1;
+  background: $white;
+  font-family: $f-monospace;
 }
 
 .text-editor {

@@ -27,6 +27,8 @@ __test__ = False  # do not collect
     ("failed", "f", "Run only failed tests"),
     ("fail_fast", "x", "Run only failed tests"),
     ("fasttest", "a", "Run without collectstatic"),
+    ('extra_args=', 'e', 'adds as extra args to the test command'),
+    ('cov_args=', 'c', 'adds as args to coverage for the test run'),
     make_option("--verbose", action="store_const", const=2, dest="verbosity"),
     make_option("-q", "--quiet", action="store_const", const=0, dest="verbosity"),
     make_option("-v", "--verbosity", action="count", dest="verbosity", default=1),
@@ -43,12 +45,14 @@ def test_system(options):
         'fail_fast': getattr(options, 'fail_fast', None),
         'fasttest': getattr(options, 'fasttest', None),
         'verbosity': getattr(options, 'verbosity', 1),
+        'extra_args': getattr(options, 'extra_args', ''),
+        'cov_args': getattr(options, 'cov_args', ''),
     }
 
     if test_id:
         if not system:
             system = test_id.split('/')[0]
-        if system == 'common':
+        if system in ['common', 'openedx']:
             system = 'lms'
         opts['test_id'] = test_id
 
@@ -73,13 +77,15 @@ def test_system(options):
     ("test_id=", "t", "Test id"),
     ("failed", "f", "Run only failed tests"),
     ("fail_fast", "x", "Run only failed tests"),
+    ('extra_args=', 'e', 'adds as extra args to the test command'),
+    ('cov_args=', 'c', 'adds as args to coverage for the test run'),
     make_option("--verbose", action="store_const", const=2, dest="verbosity"),
     make_option("-q", "--quiet", action="store_const", const=0, dest="verbosity"),
     make_option("-v", "--verbosity", action="count", dest="verbosity", default=1),
 ])
 def test_lib(options):
     """
-    Run tests for common/lib/
+    Run tests for common/lib/ and pavelib/ (paver-tests)
     """
     lib = getattr(options, 'lib', None)
     test_id = getattr(options, 'test_id', lib)
@@ -88,10 +94,15 @@ def test_lib(options):
         'failed_only': getattr(options, 'failed', None),
         'fail_fast': getattr(options, 'fail_fast', None),
         'verbosity': getattr(options, 'verbosity', 1),
+        'extra_args': getattr(options, 'extra_args', ''),
+        'cov_args': getattr(options, 'cov_args', ''),
     }
 
     if test_id:
-        lib = '/'.join(test_id.split('/')[0:3])
+        if '/' in test_id:
+            lib = '/'.join(test_id.split('/')[0:3])
+        else:
+            lib = 'common/lib/' + test_id.split('.')[0]
         opts['test_id'] = test_id
         lib_tests = [suites.LibTestSuite(lib, **opts)]
     else:
@@ -99,6 +110,9 @@ def test_lib(options):
 
     test_suite = suites.PythonTestSuite('python tests', subsuites=lib_tests, **opts)
     test_suite.run()
+
+    # Clear the Esperanto directory of any test artifacts
+    sh('git checkout conf/locale/eo')
 
 
 @task
@@ -109,6 +123,8 @@ def test_lib(options):
 @cmdopts([
     ("failed", "f", "Run only failed tests"),
     ("fail_fast", "x", "Run only failed tests"),
+    ('extra_args=', 'e', 'adds as extra args to the test command'),
+    ('cov_args=', 'c', 'adds as args to coverage for the test run'),
     make_option("--verbose", action="store_const", const=2, dest="verbosity"),
     make_option("-q", "--quiet", action="store_const", const=0, dest="verbosity"),
     make_option("-v", "--verbosity", action="count", dest="verbosity", default=1),
@@ -121,6 +137,8 @@ def test_python(options):
         'failed_only': getattr(options, 'failed', None),
         'fail_fast': getattr(options, 'fail_fast', None),
         'verbosity': getattr(options, 'verbosity', 1),
+        'extra_args': getattr(options, 'extra_args', ''),
+        'cov_args': getattr(options, 'cov_args', ''),
     }
 
     python_suite = suites.PythonTestSuite('Python Tests', **opts)
@@ -156,7 +174,7 @@ def test(options):
 @task
 @needs('pavelib.prereqs.install_prereqs')
 @cmdopts([
-    ("compare_branch", "b", "Branch to compare against, defaults to origin/master"),
+    ("compare_branch=", "b", "Branch to compare against, defaults to origin/master"),
 ])
 def coverage(options):
     """

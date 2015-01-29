@@ -1,12 +1,12 @@
 # disable missing docstring
-# pylint: disable=C0111
+# pylint: disable=missing-docstring
 
 from lettuce import world, step
 
 
 @step('I have created a Discussion Tag$')
 def i_created_discussion_tag(step):
-    world.create_course_with_unit()
+    step.given('I am in Studio editing a new unit')
     world.create_component_instance(
         step=step,
         category='discussion',

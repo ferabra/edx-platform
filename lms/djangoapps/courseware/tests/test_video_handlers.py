@@ -8,6 +8,7 @@ import textwrap
 import json
 from datetime import timedelta
 from webob import Request
+from mock import MagicMock, Mock
 
 from xmodule.contentstore.content import StaticContent
 from xmodule.contentstore.django import contentstore
@@ -23,7 +24,6 @@ from xmodule.video_module.transcripts_utils import (
     TranscriptException,
     TranscriptsGenerationException,
 )
-from opaque_keys.edx.locations import AssetLocation
 
 SRT_content = textwrap.dedent("""
         0
@@ -58,6 +58,7 @@ def _check_asset(location, asset_name):
     else:
         return True
 
+
 def _clear_assets(location):
     """
     Clear all assets for location.
@@ -66,10 +67,7 @@ def _clear_assets(location):
 
     assets, __ = store.get_all_content_for_course(location.course_key)
     for asset in assets:
-        asset_location = AssetLocation._from_deprecated_son(
-            asset.get('content_son', asset["_id"]),
-            location.course_key.run
-        )
+        asset_location = asset['asset_key']
         del_cached_content(asset_location)
         store.delete(asset_location)
 
@@ -120,12 +118,8 @@ class TestVideo(BaseTestXmodule):
             for user in self.users
         }
 
-        self.assertEqual(
-            set([
-                response.status_code
-                for _, response in responses.items()
-                ]).pop(),
-            404)
+        status_codes = {response.status_code for response in responses.values()}
+        self.assertEqual(status_codes.pop(), 404)
 
     def test_handle_ajax(self):
 
@@ -133,6 +127,7 @@ class TestVideo(BaseTestXmodule):
             {'speed': 2.0},
             {'saved_video_position': "00:00:10"},
             {'transcript_language': 'uk'},
+            {'demoo�': 'sample'}
         ]
         for sample in data:
             response = self.clients[self.users[0].username].post(
@@ -154,8 +149,12 @@ class TestVideo(BaseTestXmodule):
         self.item_descriptor.handle_ajax('save_user_state', {'transcript_language': "uk"})
         self.assertEqual(self.item_descriptor.transcript_language, 'uk')
 
+        response = self.item_descriptor.handle_ajax('save_user_state', {u'demoo�': "sample"})
+        self.assertEqual(json.loads(response)['success'], True)
+
     def tearDown(self):
         _clear_assets(self.item_descriptor.location)
+
 
 class TestTranscriptAvailableTranslationsDispatch(TestVideo):
     """
@@ -323,6 +322,11 @@ class TestTranscriptTranslationGetDispatch(TestVideo):
         response = self.item.transcript(request=request, dispatch='translation/ru')
         self.assertEqual(response.status, '404 Not Found')
 
+        # Youtube_id is invalid or does not exist
+        request = Request.blank('/translation/uk?videoId=9855256955511225')
+        response = self.item.transcript(request=request, dispatch='translation/uk')
+        self.assertEqual(response.status, '404 Not Found')
+
     def test_translaton_en_youtube_success(self):
         subs = {"start": [10], "end": [100], "text": ["Hi, welcome to Edx."]}
         good_sjson = _create_file(json.dumps(subs))
@@ -339,8 +343,9 @@ class TestTranscriptTranslationGetDispatch(TestVideo):
             u'end': [100],
             u'start': [12],
             u'text': [
-            u'\u041f\u0440\u0438\u0432\u0456\u0442, edX \u0432\u0456\u0442\u0430\u0454 \u0432\u0430\u0441.'
-        ]}
+                u'\u041f\u0440\u0438\u0432\u0456\u0442, edX \u0432\u0456\u0442\u0430\u0454 \u0432\u0430\u0441.'
+            ]
+        }
         self.non_en_file.seek(0)
         _upload_file(self.non_en_file, self.item_descriptor.location, os.path.split(self.non_en_file.name)[1])
         subs_id = _get_subs_id(self.non_en_file.name)
@@ -359,7 +364,7 @@ class TestTranscriptTranslationGetDispatch(TestVideo):
             u'end': [75],
             u'start': [9],
             u'text': [
-            u'\u041f\u0440\u0438\u0432\u0456\u0442, edX \u0432\u0456\u0442\u0430\u0454 \u0432\u0430\u0441.'
+                u'\u041f\u0440\u0438\u0432\u0456\u0442, edX \u0432\u0456\u0442\u0430\u0454 \u0432\u0430\u0441.'
             ]
         }
         self.assertDictEqual(json.loads(response.body), calculated_0_75)
@@ -371,7 +376,7 @@ class TestTranscriptTranslationGetDispatch(TestVideo):
             u'end': [150],
             u'start': [18],
             u'text': [
-            u'\u041f\u0440\u0438\u0432\u0456\u0442, edX \u0432\u0456\u0442\u0430\u0454 \u0432\u0430\u0441.'
+                u'\u041f\u0440\u0438\u0432\u0456\u0442, edX \u0432\u0456\u0442\u0430\u0454 \u0432\u0430\u0441.'
             ]
         }
         self.assertDictEqual(json.loads(response.body), calculated_1_5)
@@ -392,7 +397,7 @@ class TestTranscriptTranslationGetDispatch(TestVideo):
             u'end': [100],
             u'start': [12],
             u'text': [
-            u'\u041f\u0440\u0438\u0432\u0456\u0442, edX \u0432\u0456\u0442\u0430\u0454 \u0432\u0430\u0441.'
+                u'\u041f\u0440\u0438\u0432\u0456\u0442, edX \u0432\u0456\u0442\u0430\u0454 \u0432\u0430\u0441.'
             ]
         }
         self.non_en_file.seek(0)
@@ -404,16 +409,18 @@ class TestTranscriptTranslationGetDispatch(TestVideo):
         response = self.item.transcript(request=request, dispatch='translation/uk')
         self.assertDictEqual(json.loads(response.body), subs)
 
-    def test_translation_static_transcript(self):
+    def test_translation_static_transcript_xml_with_data_dirc(self):
         """
-        Set course static_asset_path and ensure we get redirected to that path
-        if it isn't found in the contentstore
+        Test id data_dir is set in XML course.
+
+        Set course data_dir and ensure we get redirected to that path
+        if it isn't found in the contentstore.
         """
-        self.course.static_asset_path = 'dummy/static'
-        self.course.save()
-        store = modulestore()
-        with store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, self.course.id):
-            store.update_item(self.course, self.user.id)
+        # Simulate data_dir set in course.
+        test_modulestore = MagicMock()
+        attrs = {'get_course.return_value': Mock(data_dir='dummy/static', static_asset_path='')}
+        test_modulestore.configure_mock(**attrs)
+        self.item_descriptor.runtime.modulestore = test_modulestore
 
         # Test youtube style en
         request = Request.blank('/translation/en?videoId=12345')
@@ -440,16 +447,16 @@ class TestTranscriptTranslationGetDispatch(TestVideo):
         response = self.item.transcript(request=request, dispatch='translation/uk')
         self.assertEqual(response.status, '404 Not Found')
 
-    def test_xml_transcript(self):
+    def test_translation_static_transcript(self):
         """
-        Set data_dir and remove runtime modulestore to simulate an XMLModuelStore course.
-        Then run the same tests as static_asset_path run.
+        Set course static_asset_path and ensure we get redirected to that path
+        if it isn't found in the contentstore
         """
-        # Simulate XMLModuleStore xmodule
-        self.item_descriptor.data_dir = 'dummy/static'
-        del self.item_descriptor.runtime.modulestore
-
-        self.assertFalse(self.course.static_asset_path)
+        self.course.static_asset_path = 'dummy/static'
+        self.course.save()
+        store = modulestore()
+        with store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, self.course.id):
+            store.update_item(self.course, self.user.id)
 
         # Test youtube style en
         request = Request.blank('/translation/en?videoId=12345')
@@ -575,13 +582,15 @@ class TestStudioTranscriptTranslationPostDispatch(TestVideo):
             response = self.item_descriptor.studio_transcript(request=request, dispatch='translation/uk')
 
         request = Request.blank('/translation/uk', POST={'file': ('filename.srt', SRT_content.decode('utf8').encode('cp1251'))})
-        with self.assertRaises(UnicodeDecodeError):  # Non-UTF8 file content encoding.
-            response = self.item_descriptor.studio_transcript(request=request, dispatch='translation/uk')
+        # Non-UTF8 file content encoding.
+        response = self.item_descriptor.studio_transcript(request=request, dispatch='translation/uk')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.body, "Invalid encoding type, transcripts should be UTF-8 encoded.")
 
         # No language is passed.
         request = Request.blank('/translation', POST={'file': ('filename', SRT_content)})
         response = self.item_descriptor.studio_transcript(request=request, dispatch='translation')
-        self.assertEqual(response.status,  '400 Bad Request')
+        self.assertEqual(response.status, '400 Bad Request')
 
         # Language, good filename and good content.
         request = Request.blank('/translation/uk', POST={'file': ('filename.srt', SRT_content)})

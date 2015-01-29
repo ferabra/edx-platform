@@ -1,4 +1,7 @@
-# pylint: disable=E1103, E1101
+"""
+Common utility functions useful throughout the contentstore
+"""
+# pylint: disable=no-member
 
 import copy
 import logging
@@ -9,6 +12,8 @@ from pytz import UTC
 from django.conf import settings
 from django.utils.translation import ugettext as _
 from django.core.urlresolvers import reverse
+from django_comment_common.models import assign_default_role
+from django_comment_common.utils import seed_permissions_roles
 
 from xmodule.contentstore.content import StaticContent
 from xmodule.modulestore import ModuleStoreEnum
@@ -16,6 +21,8 @@ from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.exceptions import ItemNotFoundError
 from opaque_keys.edx.keys import UsageKey, CourseKey
 from student.roles import CourseInstructorRole, CourseStaffRole
+from student.models import CourseEnrollment
+from student import auth
 
 
 log = logging.getLogger(__name__)
@@ -23,28 +30,61 @@ log = logging.getLogger(__name__)
 # In order to instantiate an open ended tab automatically, need to have this data
 OPEN_ENDED_PANEL = {"name": _("Open Ended Panel"), "type": "open_ended"}
 NOTES_PANEL = {"name": _("My Notes"), "type": "notes"}
-EXTRA_TAB_PANELS = dict([(p['type'], p) for p in [OPEN_ENDED_PANEL, NOTES_PANEL]])
+EDXNOTES_PANEL = {"name": _("Notes"), "type": "edxnotes"}
+EXTRA_TAB_PANELS = dict([(p['type'], p) for p in [OPEN_ENDED_PANEL, NOTES_PANEL, EDXNOTES_PANEL]])
 
 
-def delete_course_and_groups(course_id, user_id):
+def add_instructor(course_key, requesting_user, new_instructor):
     """
-    This deletes the courseware associated with a course_id as well as cleaning update_item
+    Adds given user as instructor and staff to the given course,
+    after verifying that the requesting_user has permission to do so.
+    """
+    # can't use auth.add_users here b/c it requires user to already have Instructor perms in this course
+    CourseInstructorRole(course_key).add_users(new_instructor)
+    auth.add_users(requesting_user, CourseStaffRole(course_key), new_instructor)
+
+
+def initialize_permissions(course_key, user_who_created_course):
+    """
+    Initializes a new course by enrolling the course creator as a student,
+    and initializing Forum by seeding its permissions and assigning default roles.
+    """
+    # seed the forums
+    seed_permissions_roles(course_key)
+
+    # auto-enroll the course creator in the course so that "View Live" will work.
+    CourseEnrollment.enroll(user_who_created_course, course_key)
+
+    # set default forum roles (assign 'Student' role)
+    assign_default_role(course_key, user_who_created_course)
+
+
+def remove_all_instructors(course_key):
+    """
+    Removes all instructor and staff users from the given course.
+    """
+    staff_role = CourseStaffRole(course_key)
+    staff_role.remove_users(*staff_role.users_with_role())
+    instructor_role = CourseInstructorRole(course_key)
+    instructor_role.remove_users(*instructor_role.users_with_role())
+
+
+def delete_course_and_groups(course_key, user_id):
+    """
+    This deletes the courseware associated with a course_key as well as cleaning update_item
     the various user table stuff (groups, permissions, etc.)
     """
     module_store = modulestore()
 
-    with module_store.bulk_write_operations(course_id):
-        module_store.delete_course(course_id, user_id)
+    with module_store.bulk_operations(course_key):
+        module_store.delete_course(course_key, user_id)
 
         print 'removing User permissions from course....'
         # in the django layer, we need to remove all the user permissions groups associated with this course
         try:
-            staff_role = CourseStaffRole(course_id)
-            staff_role.remove_users(*staff_role.users_with_role())
-            instructor_role = CourseInstructorRole(course_id)
-            instructor_role.remove_users(*instructor_role.users_with_role())
+            remove_all_instructors(course_key)
         except Exception as err:
-            log.error("Error in deleting course groups for {0}: {1}".format(course_id, err))
+            log.error("Error in deleting course groups for {0}: {1}".format(course_key, err))
 
 
 def get_lms_link_for_item(location, preview=False):
@@ -64,19 +104,19 @@ def get_lms_link_for_item(location, preview=False):
     else:
         lms_base = settings.LMS_BASE
 
-    return u"//{lms_base}/courses/{course_id}/jump_to/{location}".format(
+    return u"//{lms_base}/courses/{course_key}/jump_to/{location}".format(
         lms_base=lms_base,
-        course_id=location.course_key.to_deprecated_string(),
+        course_key=location.course_key.to_deprecated_string(),
         location=location.to_deprecated_string(),
     )
 
 
-def get_lms_link_for_about_page(course_id):
+def get_lms_link_for_about_page(course_key):
     """
     Returns the url to the course about page from the location tuple.
     """
 
-    assert(isinstance(course_id, CourseKey))
+    assert(isinstance(course_key, CourseKey))
 
     if settings.FEATURES.get('ENABLE_MKTG_SITE', False):
         if not hasattr(settings, 'MKTG_URLS'):
@@ -101,36 +141,24 @@ def get_lms_link_for_about_page(course_id):
     else:
         return None
 
-    return u"//{about_base_url}/courses/{course_id}/about".format(
+    return u"//{about_base_url}/courses/{course_key}/about".format(
         about_base_url=about_base,
-        course_id=course_id.to_deprecated_string()
+        course_key=course_key.to_deprecated_string()
     )
 
 
 def course_image_url(course):
     """Returns the image url for the course."""
     loc = StaticContent.compute_location(course.location.course_key, course.course_image)
-    path = loc.to_deprecated_string()
+    path = StaticContent.serialize_asset_key_with_slash(loc)
     return path
 
 
-def compute_publish_state(xblock):
+# pylint: disable=invalid-name
+def is_currently_visible_to_students(xblock):
     """
-    Returns whether this xblock is draft, public, or private.
-
-    Returns:
-        PublishState.draft - content is in the process of being edited, but still has a previous
-            version deployed to LMS
-        PublishState.public - content is locked and deployed to LMS
-        PublishState.private - content is editable and not deployed to LMS
-    """
-
-    return modulestore().compute_publish_state(xblock)
-
-
-def is_xblock_visible_to_students(xblock):
-    """
-    Returns true if there is a published version of the xblock that has been released.
+    Returns true if there is a published version of the xblock that is currently visible to students.
+    This means that it has a release date in the past, and the xblock has not been set to staff only.
     """
 
     try:
@@ -139,12 +167,106 @@ def is_xblock_visible_to_students(xblock):
     except ItemNotFoundError:
         return False
 
+    # If visible_to_staff_only is True, this xblock is not visible to students regardless of start date.
+    if published.visible_to_staff_only:
+        return False
+
     # Check start date
     if 'detached' not in published._class_tags and published.start is not None:
         return datetime.now(UTC) > published.start
 
     # No start date, so it's always visible
     return True
+
+
+def has_children_visible_to_specific_content_groups(xblock):
+    """
+    Returns True if this xblock has children that are limited to specific content groups.
+    Note that this method is not recursive (it does not check grandchildren).
+    """
+    if not xblock.has_children:
+        return False
+
+    for child in xblock.get_children():
+        if is_visible_to_specific_content_groups(child):
+            return True
+
+    return False
+
+
+def is_visible_to_specific_content_groups(xblock):
+    """
+    Returns True if this xblock has visibility limited to specific content groups.
+    """
+    if not xblock.group_access:
+        return False
+    for __, value in xblock.group_access.iteritems():
+        # value should be a list of group IDs. If it is an empty list or None, the xblock is visible
+        # to all groups in that particular partition. So if value is a truthy value, the xblock is
+        # restricted in some way.
+        if value:
+            return True
+    return False
+
+
+def find_release_date_source(xblock):
+    """
+    Finds the ancestor of xblock that set its release date.
+    """
+
+    # Stop searching at the section level
+    if xblock.category == 'chapter':
+        return xblock
+
+    parent_location = modulestore().get_parent_location(xblock.location,
+                                                        revision=ModuleStoreEnum.RevisionOption.draft_preferred)
+    # Orphaned xblocks set their own release date
+    if not parent_location:
+        return xblock
+
+    parent = modulestore().get_item(parent_location)
+    if parent.start != xblock.start:
+        return xblock
+    else:
+        return find_release_date_source(parent)
+
+
+def find_staff_lock_source(xblock):
+    """
+    Returns the xblock responsible for setting this xblock's staff lock, or None if the xblock is not staff locked.
+    If this xblock is explicitly locked, return it, otherwise find the ancestor which sets this xblock's staff lock.
+    """
+
+    # Stop searching if this xblock has explicitly set its own staff lock
+    if xblock.fields['visible_to_staff_only'].is_set_on(xblock):
+        return xblock
+
+    # Stop searching at the section level
+    if xblock.category == 'chapter':
+        return None
+
+    parent_location = modulestore().get_parent_location(xblock.location,
+                                                        revision=ModuleStoreEnum.RevisionOption.draft_preferred)
+    # Orphaned xblocks set their own staff lock
+    if not parent_location:
+        return None
+
+    parent = modulestore().get_item(parent_location)
+    return find_staff_lock_source(parent)
+
+
+def ancestor_has_staff_lock(xblock, parent_xblock=None):
+    """
+    Returns True iff one of xblock's ancestors has staff lock.
+    Can avoid mongo query by passing in parent_xblock.
+    """
+    if parent_xblock is None:
+        parent_location = modulestore().get_parent_location(xblock.location,
+                                                            revision=ModuleStoreEnum.RevisionOption.draft_preferred)
+        if not parent_location:
+            return False
+        parent_xblock = modulestore().get_item(parent_location)
+    return parent_xblock.visible_to_staff_only
 
 
 def add_extra_panel_tab(tab_type, course):
@@ -203,6 +325,13 @@ def reverse_course_url(handler_name, course_key, kwargs=None):
     Creates the URL for handlers that use course_keys as URL parameters.
     """
     return reverse_url(handler_name, 'course_key_string', course_key, kwargs)
+
+
+def reverse_library_url(handler_name, library_key, kwargs=None):
+    """
+    Creates the URL for handlers that use library_keys as URL parameters.
+    """
+    return reverse_url(handler_name, 'library_key_string', library_key, kwargs)
 
 
 def reverse_usage_url(handler_name, usage_key, kwargs=None):

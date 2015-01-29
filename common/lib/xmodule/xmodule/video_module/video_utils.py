@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 """
-Module containts utils specific for video_module but not for transcripts.
+Module contains utils specific for video_module but not for transcripts.
 """
 import json
 import logging
@@ -33,6 +34,8 @@ def create_youtube_string(module):
     ])
 
 
+# def get_video_from_cdn(cdn_base_url, original_video_url, cdn_branding_logo_url):
+# Not sure if this third variable is necessary...
 def get_video_from_cdn(cdn_base_url, original_video_url):
     """
     Get video URL from CDN.
@@ -46,7 +49,7 @@ def get_video_from_cdn(cdn_base_url, original_video_url):
                     "http://cm12.c110.play.bokecc.com/flvs/ca/QxcVl/u39EQbA0Ra-20.mp4",
                     "http://bm1.42.play.bokecc.com/flvs/ca/QxcVl/u39EQbA0Ra-20.mp4"
                 ],
-            "s3_url": "http://s3.amazonaws.com/BESTech/CS169/download/CS169_v13_w5l2s3.mp4"
+            "s3_url": "http://s3.amazonaws.com/BESTech/CS169/download/CS169_v13_w5l2s3.mp4",
         }
     where `s3_url` is requested original video url and `sources` is the list of
     alternative links.
@@ -60,8 +63,7 @@ def get_video_from_cdn(cdn_base_url, original_video_url):
     try:
         cdn_response = requests.get(request_url, timeout=0.5)
     except RequestException as err:
-        log.warning("Error requesting from CDN server at %s", request_url)
-        log.exception(err)
+        log.info("Request timed out to CDN server: %s", request_url, exc_info=True)
         return None
 
     if cdn_response.status_code == 200:

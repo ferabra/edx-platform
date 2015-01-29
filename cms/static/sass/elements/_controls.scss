@@ -1,9 +1,22 @@
 // studio - elements - UI controls
 // ====================
 
-// ====================
+// Table of Contents 
+// * +General Action - Extend
+// * +General Type and Size - Extend
+// * +Primary Button - Extends
+// * +Secondary Button - Extends
+// * +Button
+// * +UI Dropdown Button - Extend
+// * +UI Nav Dropdown Button - Extend
+// * +UI Actions List - Extend
+// * +UI Expand/Collapse - Extend
+// * +Drag and Drop
 
-// general actions
+
+
+// +General Action - Extend
+// ==================== 
 %action {
   @extend %ui-fake-link;
 
@@ -14,8 +27,16 @@
   }
 }
 
-// ====================
+// +General Type and Size - Extend
+// ==================== 
+%sizing {
+  @extend %t-action4;
+  padding: ($baseline/4) ($baseline/2) ($baseline/3) ($baseline/2);
+}
 
+
+// +Primary Button - Extends
+// ==================== 
 // gray primary button
 %btn-primary-gray {
   @extend %ui-btn-primary;
@@ -46,8 +67,8 @@
   color: $white;
 
   &:hover, &:active {
-    background: $blue-s2;
-    border-color: $blue-s2;
+    background: $blue-l1;
+    border-color: $blue-l1;
   }
 
   &.current, &.active {
@@ -84,6 +105,8 @@
   }
 }
 
+// +Secondary Button - Extends
+// ==================== 
 // gray secondary button
 %btn-secondary-gray {
   @extend %ui-btn-secondary;
@@ -127,6 +150,27 @@
   }
 }
 
+// white secondary button
+%btn-secondary-white {
+  @extend %ui-btn-secondary;
+  border-color: $white-t2;
+  color: $white-t3;
+
+  &:hover, &:active {
+    border-color: $white;
+    color: $white;
+  }
+
+  &.current, &.active {
+    background: $gray-d2;
+    color: $gray-l5;
+
+    &:hover, &:active {
+      background: $gray-d2;
+    }
+  }
+}
+
 // green secondary button
 %btn-secondary-green {
   @extend %ui-btn-secondary;
@@ -148,21 +192,19 @@
   }
 }
 
-// ====================
-
-// button elements
+// +Button Element
+// ==================== 
 .button {
 
-  [class^="icon-"] {
+  .icon {
     display: inline-block;
     vertical-align: middle;
     margin-right: ($baseline/4);
   }
 }
 
+// +UI Dropdown Button - Extend
 // ====================
-
-// simple dropdown button styling - should we move this elsewhere?
 %ui-btn-dd {
   @extend %ui-btn;
   @extend %ui-btn-pill;
@@ -183,7 +225,8 @@
   }
 }
 
-// layout-based buttons - nav dd
+// +UI Nav Dropdown Button - Extend
+// ====================
 %ui-btn-dd-nav-primary {
   @extend %ui-btn-dd;
   background: $white;
@@ -205,29 +248,17 @@
   }
 }
 
+// +UI Actions List - Extend
 // ====================
-
-// calls-to-action
-
-// ====================
-
-// specific buttons - view live
-%view-live-button {
-  @extend %t-action4;
-}
-
-// ====================
-
-// UI: element actions list
-%actions-header {
-  .actions-list {
-    display: inline-block;
-    margin-bottom: 0;
-  }
+%actions-list {
+  display: inline-block;
+  margin-bottom: 0;
 
   .action-item {
+    position: relative;
     display: inline-block;
     vertical-align: middle;
+    margin: ($baseline/10) 0 ($baseline/10) ($baseline/10);
 
     .action-button {
       @include transition(all $tmg-f3 linear 0s);
@@ -249,6 +280,10 @@
       &.delete-button:hover {
         background-color: $gray-l1;
       }
+
+      .icon {
+        font-style: normal;
+      }
     }
 
     .drag-handle {
@@ -257,12 +292,27 @@
       height: ($baseline*1.2);
       width: ($baseline);
       margin: 0;
-      background: transparent url("../img/drag-handles.png") no-repeat right center;
+
+      // CASE: right to left layout
+      @include rtl {
+       background: transparent url("../images/drag-handles.png") no-repeat left center;
+      }
+
+      // CASE: left to right layout
+      @include ltr {
+        background: transparent url("../images/drag-handles.png") no-repeat right center;
+      }
+    }
+
+    &.toggle-action {
+      // TODO: generalize and move checkbox styling in from static-pages and assets sass
     }
   }
 }
 
-// UI: elem is collapsible
+// +UI Expand/Collapse - Extend
+// ====================
+// TODO: this should be transitioned away from in favor of %ui-expand-collapse
 %expand-collapse {
   @include transition(all $tmg-f2 linear 0s);
   display: inline-block;
@@ -275,7 +325,7 @@
 
   .ui-toggle-expansion {
     @include transition(all $tmg-f2 ease-in-out 0s);
-    @include font-size(18);
+    @extend %t-action1;
     display: inline-block;
     margin-right: ($baseline/4);
     color: $gray-l3;
@@ -288,17 +338,57 @@
   }
 }
 
-// UI: drag handles
+// +UI Expand/Collapse - Extend
+// ====================
+// will replace %expand-collapse
+%ui-expand-collapse {
+  @include transition(all $tmg-f2 linear 0s);
+
+
+  // CASE: default (is expanded)
+  .ui-toggle-expansion {
+    @include transition(all $tmg-f2 ease-in-out 0s);
+    display: inline-block;
+    vertical-align: middle;
+
+    .icon {
+      @include transition(all $tmg-f2 ease-in-out 0s);
+    }
+
+    // STATE: hover/active
+    &:hover, &:active {
+      @extend %ui-fake-link;
+      color: $ui-link-color-focus;
+    }
+  }
+
+  // CASE: is collapsed
+  &.is-collapsed {
+
+    .ui-toggle-expansion {
+
+      .icon {
+        @include transform(rotate(-90deg));
+        @include transform-origin(50% 50%);
+      }
+    }
+  }
+}
+
+// +Drag and Drop Styling
+// ====================
+
+// UI: drag handle
 .drag-handle {
 
   &:hover, &:focus {
     cursor: move;
   }
 }
-
-// UI: elem is draggable
+ 
+// UI: is draggable
 .is-draggable {
-  @include transition(border-color $tmg-f2 ease-in-out 0, box-shadow $tmg-f2 ease-in-out 0);
+  @include transition(border-color $tmg-f2 ease-in-out 0, box-shadow $tmg-f2 ease-in-out 0, margin $tmg-f2 ease-in-out 0);
   position: relative;
 
   .draggable-drop-indicator {
@@ -309,7 +399,7 @@
     border-top: 1px solid $blue-l1;
     opacity: 0.0;
 
-    *[class^="icon-caret"] {
+    .fa-caret-right {
       @extend %t-icon5;
       position: absolute;
       top: -12px;
@@ -327,7 +417,7 @@
   }
 }
 
-// UI: drag state - is dragging
+// UI: is dragging - drag state
 .is-dragging {
   @extend %ui-depth4;
   left: -($baseline/4);
@@ -338,8 +428,8 @@
 
   // UI: condition - valid drop
   &.valid-drop {
-    border-color: $blue-s1;
-    box-shadow: 0 1px 2px 0 $blue-t2;
+    border-color: $ui-action-primary-color-focus;
+    box-shadow: 0 1px 2px 0 rgba($ui-action-primary-color-focus, 0.50);
   }
 }
 
@@ -352,6 +442,7 @@
 .drop-target {
 
   &.drop-target-before {
+    margin-top: ($baseline*1.5);
 
     > .draggable-drop-indicator-before {
       opacity: 1.0;
@@ -359,9 +450,17 @@
   }
 
   &.drop-target-after {
+    margin-bottom: ($baseline*1.5);
 
     > .draggable-drop-indicator-after {
       opacity: 1.0;
     }
   }
+}
+
+// UI: drop state - was dropped
+.was-dropped {
+  @include animation(was-dropped $tmg-avg ease-in-out 1);
+  border-color: $ui-action-primary-color-focus;
+  box-shadow: 0 1px 2px 0 rgba($ui-action-primary-color-focus, 0.50);
 }

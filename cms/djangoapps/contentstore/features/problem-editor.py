@@ -1,9 +1,9 @@
 # disable missing docstring
-# pylint: disable=C0111
+# pylint: disable=missing-docstring
 
 import json
 from lettuce import world, step
-from nose.tools import assert_equal, assert_true  # pylint: disable=E0611
+from nose.tools import assert_equal, assert_true  # pylint: disable=no-name-in-module
 from common import type_in_codemirror, open_new_course
 from advanced_settings import change_value, ADVANCED_MODULES_KEY
 from course_import import import_file
@@ -13,19 +13,20 @@ MAXIMUM_ATTEMPTS = "Maximum Attempts"
 PROBLEM_WEIGHT = "Problem Weight"
 RANDOMIZATION = 'Randomization'
 SHOW_ANSWER = "Show Answer"
+SHOW_RESET_BUTTON = "Show Reset Button"
 TIMER_BETWEEN_ATTEMPTS = "Timer Between Attempts"
 MATLAB_API_KEY = "Matlab API key"
 
 
 @step('I have created a Blank Common Problem$')
 def i_created_blank_common_problem(step):
-    world.create_course_with_unit()
+    step.given('I am in Studio editing a new unit')
     step.given("I have created another Blank Common Problem")
 
 
 @step('I have created a unit with advanced module "(.*)"$')
 def i_created_unit_with_advanced_module(step, advanced_module):
-    world.create_course_with_unit()
+    step.given('I am in Studio editing a new unit')
 
     url = world.browser.url
     step.given("I select the Advanced Settings")
@@ -102,6 +103,7 @@ def i_see_advanced_settings_with_values(step):
             [PROBLEM_WEIGHT, "", False],
             [RANDOMIZATION, "Never", False],
             [SHOW_ANSWER, "Finished", False],
+            [SHOW_RESET_BUTTON, "False", False],
             [TIMER_BETWEEN_ATTEMPTS, "0", False],
         ])
 
@@ -131,6 +133,18 @@ def i_can_modify_the_display_name_with_special_chars(_step):
     index = world.get_setting_entry_index(DISPLAY_NAME)
     world.set_field_value(index, "updated ' \" &")
     verify_modified_display_name_with_special_chars()
+
+
+@step('I can specify html in the display name and save')
+def i_can_modify_the_display_name_with_html(_step):
+    """
+    If alert appear on save then UnexpectedAlertPresentException
+    will occur and test will fail.
+    """
+    index = world.get_setting_entry_index(DISPLAY_NAME)
+    world.set_field_value(index, "<script>alert('test')</script>")
+    verify_modified_display_name_with_html()
+    world.save_component()
 
 
 @step('my special characters and persisted on save')
@@ -239,7 +253,7 @@ def enable_latex_compiler(step):
 
 @step('I have created a LaTeX Problem')
 def create_latex_problem(step):
-    world.create_course_with_unit()
+    step.given('I am in Studio editing a new unit')
     step.given('I have enabled latex compiler')
     world.create_component_instance(
         step=step,
@@ -305,15 +319,13 @@ def i_can_edit_problem(_step):
 
 @step(u'I edit first blank advanced problem for annotation response$')
 def i_edit_blank_problem_for_annotation_response(_step):
-    edit_css = """$('.component-header:contains("Blank Advanced Problem")').parent().find('a.edit-button').click()"""
+    world.edit_component(1)
     text = """
         <problem>
             <annotationresponse>
                 <annotationinput><text>Text of annotation</text></annotationinput>
             </annotationresponse>
         </problem>"""
-    world.browser.execute_script(edit_css)
-    world.wait_for_ajax_complete()
     type_in_codemirror(0, text)
     world.save_component()
 
@@ -350,6 +362,10 @@ def verify_modified_display_name():
 
 def verify_modified_display_name_with_special_chars():
     world.verify_setting_entry(world.get_setting_entry(DISPLAY_NAME), DISPLAY_NAME, "updated ' \" &", True)
+
+
+def verify_modified_display_name_with_html():
+    world.verify_setting_entry(world.get_setting_entry(DISPLAY_NAME), DISPLAY_NAME, "<script>alert('test')</script>", True)
 
 
 def verify_unset_display_name():

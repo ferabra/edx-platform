@@ -11,7 +11,11 @@ _ = lambda text: text
 
 
 class DiscussionFields(object):
-    discussion_id = String(scope=Scope.settings, default="$$GUID$$")
+    discussion_id = String(
+        display_name=_("Discussion Id"),
+        help=_("The id is a unique identifier for the discussion. It is non editable."),
+        scope=Scope.settings,
+        default="$$GUID$$")
     display_name = String(
         display_name=_("Display Name"),
         help=_("Display name for this module"),
@@ -52,12 +56,19 @@ class DiscussionModule(DiscussionFields, XModule):
     def get_html(self):
         context = {
             'discussion_id': self.discussion_id,
+            'course': self.get_course(),
         }
         if getattr(self.system, 'is_author_mode', False):
             template = 'discussion/_discussion_module_studio.html'
         else:
             template = 'discussion/_discussion_module.html'
         return self.system.render_template(template, context)
+
+    def get_course(self):
+        """
+        Return course by course id.
+        """
+        return self.descriptor.runtime.modulestore.get_course(self.course_id)
 
 
 class DiscussionDescriptor(DiscussionFields, MetadataOnlyEditingDescriptor, RawDescriptor):

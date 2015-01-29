@@ -5,6 +5,7 @@ import sys
 import os
 import time
 import httplib
+import subprocess
 from paver.easy import sh
 from pavelib.utils.envs import Env
 from pavelib.utils.process import run_background_process
@@ -17,7 +18,7 @@ except ImportError:
 __test__ = False  # do not collect
 
 
-def start_servers():
+def start_servers(default_store):
     """
     Start the servers we will run tests on, returns PIDs for servers.
     """
@@ -32,9 +33,11 @@ def start_servers():
     for service, info in Env.BOK_CHOY_SERVERS.iteritems():
         address = "0.0.0.0:{}".format(info['port'])
         cmd = (
+            "DEFAULT_STORE={default_store} "
             "coverage run --rcfile={coveragerc} -m "
             "manage {service} --settings bok_choy runserver "
             "{address} --traceback --noreload".format(
+                default_store=default_store,
                 coveragerc=Env.BOK_CHOY_COVERAGERC,
                 service=service,
                 address=address,
@@ -125,10 +128,12 @@ def is_mysql_running():
     """
     Returns True if mysql is running, False otherwise.
     """
-    # We use the MySQL CLI client and capture its stderr
-    # If the client cannot connect successfully, stderr will be non-empty
-    output = os.popen('mysql -e "" 2>&1').read()
-    return output == ""
+    # We need to check whether or not mysql is running as a process
+    # even if it is not daemonized.
+    with open(os.devnull, 'w') as DEVNULL:
+        #pgrep returns the PID, which we send to /dev/null
+        returncode = subprocess.call("pgrep mysqld", stdout=DEVNULL, shell=True)
+    return returncode == 0
 
 
 def clear_mongo():

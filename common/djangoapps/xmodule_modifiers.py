@@ -6,9 +6,13 @@ import datetime
 import json
 import logging
 import static_replace
+import uuid
+import markupsafe
+from lxml import html, etree
 
 from django.conf import settings
 from django.utils.timezone import UTC
+from django.utils.html import escape
 from edxmako.shortcuts import render_to_string
 from xblock.exceptions import InvalidScopeError
 from xblock.fragment import Fragment
@@ -32,7 +36,19 @@ def wrap_fragment(fragment, new_content):
     return wrapper_frag
 
 
-def wrap_xblock(runtime_class, block, view, frag, context, usage_id_serializer, display_name_only=False, extra_data=None):  # pylint: disable=unused-argument
+def request_token(request):
+    """
+    Return a unique token for the supplied request.
+    This token will be the same for all calls to `request_token`
+    made on the same request object.
+    """
+    if not hasattr(request, '_xblock_token'):
+        request._xblock_token = uuid.uuid1().get_hex()
+
+    return request._xblock_token
+
+
+def wrap_xblock(runtime_class, block, view, frag, context, usage_id_serializer, request_token, display_name_only=False, extra_data=None):  # pylint: disable=unused-argument
     """
     Wraps the results of rendering an XBlock view in a standard <section> with identifying
     data so that the appropriate javascript module can be loaded onto it.
@@ -44,6 +60,8 @@ def wrap_xblock(runtime_class, block, view, frag, context, usage_id_serializer, 
     :param context: The context passed to the view being rendered
     :param usage_id_serializer: A function to serialize the block's usage_id for use by the
         front-end Javascript Runtime.
+    :param request_token: An identifier that is unique per-request, so that only xblocks
+        rendered as part of this request will have their javascript initialized.
     :param display_name_only: If true, don't render the fragment content at all.
         Instead, just render the `display_name` of `block`
     :param extra_data: A dictionary with extra data values to be set on the wrapper
@@ -56,7 +74,11 @@ def wrap_xblock(runtime_class, block, view, frag, context, usage_id_serializer, 
 
     data = {}
     data.update(extra_data)
-    css_classes = ['xblock', 'xblock-' + view]
+
+    css_classes = [
+        'xblock',
+        'xblock-{}'.format(markupsafe.escape(view))
+    ]
 
     if isinstance(block, (XModule, XModuleDescriptor)):
         if view in PREVIEW_VIEWS:
@@ -66,7 +88,7 @@ def wrap_xblock(runtime_class, block, view, frag, context, usage_id_serializer, 
             # The block is acting as an XModuleDescriptor
             css_classes.append('xmodule_edit')
 
-        css_classes.append('xmodule_' + class_name)
+        css_classes.append('xmodule_' + markupsafe.escape(class_name))
         data['type'] = block.js_module_name
         shim_xmodule_js(frag)
 
@@ -74,16 +96,28 @@ def wrap_xblock(runtime_class, block, view, frag, context, usage_id_serializer, 
         data['init'] = frag.js_init_fn
         data['runtime-class'] = runtime_class
         data['runtime-version'] = frag.js_init_version
-        data['block-type'] = block.scope_ids.block_type
-        data['usage-id'] = usage_id_serializer(block.scope_ids.usage_id)
+
+    data['block-type'] = block.scope_ids.block_type
+    data['usage-id'] = usage_id_serializer(block.scope_ids.usage_id)
+    data['request-token'] = request_token
+
+    if block.name:
+        data['name'] = block.name
 
     template_context = {
         'content': block.display_name if display_name_only else frag.content,
         'classes': css_classes,
         'display_name': block.display_name_with_default,
-        'data_attributes': u' '.join(u'data-{}="{}"'.format(key, value)
+        'data_attributes': u' '.join(u'data-{}="{}"'.format(markupsafe.escape(key), markupsafe.escape(value))
                                      for key, value in data.iteritems()),
     }
+
+    if hasattr(frag, 'json_init_args') and frag.json_init_args is not None:
+        template_context['js_init_parameters'] = json.dumps(frag.json_init_args)
+        template_context['js_pass_parameters'] = True
+    else:
+        template_context['js_init_parameters'] = ""
+        template_context['js_pass_parameters'] = False
 
     return wrap_fragment(frag, render_to_string('xblock_wrapper.html', template_context))
 
@@ -169,13 +203,12 @@ def add_staff_markup(user, has_instructor_access, block, view, frag, context):  
     # TODO: make this more general, eg use an XModule attribute instead
     if isinstance(block, VerticalModule) and (not context or not context.get('child_of_vertical', False)):
         # check that the course is a mongo backed Studio course before doing work
-        is_mongo_course = modulestore().get_modulestore_type(block.location.course_key) == ModuleStoreEnum.Type.mongo
+        is_mongo_course = modulestore().get_modulestore_type(block.location.course_key) != ModuleStoreEnum.Type.xml
         is_studio_course = block.course_edit_method == "Studio"
 
         if is_studio_course and is_mongo_course:
             # build edit link to unit in CMS. Can't use reverse here as lms doesn't load cms's urls.py
-            # reverse for contentstore.views.unit_handler
-            edit_link = "//" + settings.CMS_BASE + '/unit/' + unicode(block.location)
+            edit_link = "//" + settings.CMS_BASE + '/container/' + unicode(block.location)
 
             # return edit link in rendered HTML for display
             return wrap_fragment(frag, render_to_string("edit_unit_link.html", {'frag_content': frag.content, 'edit_link': edit_link}))
@@ -247,3 +280,63 @@ def add_staff_markup(user, has_instructor_access, block, view, frag, context):  
                      'has_instructor_access': has_instructor_access,
                      }
     return wrap_fragment(frag, render_to_string("staff_problem_info.html", staff_context))
+
+
+def get_course_update_items(course_updates, provided_index=0):
+    """
+    Returns list of course_updates data dictionaries either from new format if available or
+    from old. This function don't modify old data to new data (in db), instead returns data
+    in common old dictionary format.
+    New Format: {"items" : [{"id": computed_id, "date": date, "content": html-string}],
+                 "data": "<ol>[<li><h2>date</h2>content</li>]</ol>"}
+    Old Format: {"data": "<ol>[<li><h2>date</h2>content</li>]</ol>"}
+    """
+    def _course_info_content(html_parsed):
+        """
+        Constructs the HTML for the course info update, not including the header.
+        """
+        if len(html_parsed) == 1:
+            # could enforce that update[0].tag == 'h2'
+            content = html_parsed[0].tail
+        else:
+            content = html_parsed[0].tail if html_parsed[0].tail is not None else ""
+            content += "\n".join([html.tostring(ele) for ele in html_parsed[1:]])
+        return content
+
+    if course_updates and getattr(course_updates, "items", None):
+        if provided_index and 0 < provided_index <= len(course_updates.items):
+            return course_updates.items[provided_index - 1]
+        else:
+            # return list in reversed order (old format: [4,3,2,1]) for compatibility
+            return list(reversed(course_updates.items))
+
+    course_update_items = []
+    if course_updates:
+        # old method to get course updates
+        # purely to handle free formed updates not done via editor. Actually kills them, but at least doesn't break.
+        try:
+            course_html_parsed = html.fromstring(course_updates.data)
+        except (etree.XMLSyntaxError, etree.ParserError):
+            log.error("Cannot parse: " + course_updates.data)
+            escaped = escape(course_updates.data)
+            course_html_parsed = html.fromstring("<ol><li>" + escaped + "</li></ol>")
+
+        # confirm that root is <ol>, iterate over <li>, pull out <h2> subs and then rest of val
+        if course_html_parsed.tag == 'ol':
+            # 0 is the newest
+            for index, update in enumerate(course_html_parsed):
+                if len(update) > 0:
+                    content = _course_info_content(update)
+                    # make the id on the client be 1..len w/ 1 being the oldest and len being the newest
+                    computed_id = len(course_html_parsed) - index
+                    payload = {
+                        "id": computed_id,
+                        "date": update.findtext("h2"),
+                        "content": content
+                    }
+                    if provided_index == 0:
+                        course_update_items.append(payload)
+                    elif provided_index == computed_id:
+                        return payload
+
+    return course_update_items

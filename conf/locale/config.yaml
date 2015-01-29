@@ -16,6 +16,7 @@ locales:
     - da  # Danish
     - de_DE  # German (Germany)
     - el  # Greek
+    - en_GB  # English (United Kingdom)
     # Don't pull these until we figure out why pages randomly display in these locales,
     # when the user's browser is in English and the user is not logged in.
 #    - en@lolcat  # LOLCAT English
@@ -31,6 +32,7 @@ locales:
     - fa  # Persian
     - fa_IR  # Persian (Iran)
     - fi_FI  # Finnish (Finland)
+    - fil  # Filipino
     - fr  # French
     - gl  # Galician
     - gu  # Gujarati
@@ -49,6 +51,7 @@ locales:
     - lt_LT  # Lithuanian (Lithuania)
     - ml  # Malayalam
     - mn  # Mongolian
+    - mr  # Marathi
     - ms  # Malay
     - nb  # Norwegian Bokmål
     - ne  # Nepali
@@ -62,11 +65,17 @@ locales:
     - si  # Sinhala
     - sk  # Slovak
     - sl  # Slovenian
+    - sq  # Albanian
+    - sr  # Serbian
+    - sv  # Swedish
+    - sw  # Swahili
     - ta  # Tamil
+    - te  # Telugu
     - th  # Thai
     - tr_TR  # Turkish (Turkey)
     - uk  # Ukranian
     - ur  # Urdu
+    - uz  # Uzbek
     - vi  # Vietnamese
     - zh_CN  # Chinese (China)
     - zh_HK  # Chinese (Hong Kong)
@@ -77,6 +86,7 @@ locales:
 dummy_locales:
     - eo
     - fake2
+    - en@rtl
 
 # Directories we don't search for strings.
 ignore_dirs:

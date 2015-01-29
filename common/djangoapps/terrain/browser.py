@@ -2,8 +2,8 @@
 Browser set up for acceptance tests.
 """
 
-# pylint: disable=E1101
-# pylint: disable=W0613
+# pylint: disable=no-member
+# pylint: disable=unused-argument
 
 from lettuce import before, after, world
 from splinter.browser import Browser
@@ -16,10 +16,8 @@ import requests
 from base64 import encodestring
 from json import dumps
 
-from pymongo import MongoClient
 import xmodule.modulestore.django
 from xmodule.contentstore.django import _CONTENTSTORE
-from xmodule.modulestore import ModuleStoreEnum
 
 # There is an import issue when using django-staticfiles with lettuce
 # Lettuce assumes that we are using django.contrib.staticfiles,
@@ -95,6 +93,16 @@ def initial_setup(server):
     if world.LETTUCE_SELENIUM_CLIENT == 'local':
         browser_driver = getattr(settings, 'LETTUCE_BROWSER', 'chrome')
 
+        if browser_driver == 'chrome':
+            desired_capabilities = DesiredCapabilities.CHROME
+            desired_capabilities['loggingPrefs'] = {
+                'browser': 'ALL',
+            }
+        elif browser_driver == 'firefox':
+            desired_capabilities = DesiredCapabilities.FIREFOX
+        else:
+            desired_capabilities = {}
+
         # There is an issue with ChromeDriver2 r195627 on Ubuntu
         # in which we sometimes get an invalid browser session.
         # This is a work-around to ensure that we get a valid session.
@@ -107,7 +115,7 @@ def initial_setup(server):
             # the browser session is invalid, this will
             # raise a WebDriverException
             try:
-                world.browser = Browser(browser_driver)
+                world.browser = Browser(browser_driver, desired_capabilities=desired_capabilities)
                 world.browser.driver.set_script_timeout(GLOBAL_SCRIPT_TIMEOUT)
                 world.visit('/')
 
@@ -186,12 +194,9 @@ def reset_databases(scenario):
     whereas modulestore data is in unique collection names.  This data is created implicitly during the scenarios.
     If no data is created during the test, these lines equivilently do nothing.
     '''
-    modulestore = xmodule.modulestore.django.modulestore()._get_modulestore_by_type(ModuleStoreEnum.Type.mongo)
-    modulestore.contentstore.drop_database()
-    _CONTENTSTORE.clear()
-
-    modulestore.collection.drop()
+    xmodule.modulestore.django.modulestore()._drop_database()  # pylint: disable=protected-access
     xmodule.modulestore.django.clear_existing_modulestores()
+    _CONTENTSTORE.clear()
 
 
 @world.absorb
@@ -223,6 +228,25 @@ def screenshot_on_error(scenario):
             world.browser.driver.save_screenshot(image_name)
         except WebDriverException:
             LOGGER.error('Could not capture a screenshot')
+
+
+@after.each_scenario
+def capture_console_log(scenario):
+    """
+    Save the console log to help with debugging.
+    """
+    if scenario.failed:
+        log = world.browser.driver.get_log('browser')
+        try:
+            output_dir = '{}/log'.format(settings.TEST_ROOT)
+            file_name = '{}/{}.log'.format(output_dir, scenario.name.replace(' ', '_'))
+
+            with open(file_name, 'w') as output_file:
+                for line in log:
+                    output_file.write("{}{}".format(dumps(line), '\n'))
+
+        except WebDriverException:
+            LOGGER.error('Could not capture the console log')
 
 
 def capture_screenshot_for_step(step, when):

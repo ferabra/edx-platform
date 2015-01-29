@@ -7,17 +7,25 @@ import logging
 import re
 import json
 import datetime
+from uuid import uuid4
 
+from pytz import UTC
 from collections import namedtuple, defaultdict
 import collections
 from contextlib import contextmanager
+import functools
+import threading
+from operator import itemgetter
+from sortedcontainers import SortedListWithKey
 
 from abc import ABCMeta, abstractmethod
+from contracts import contract, new_contract
 from xblock.plugin import default_select
 
 from .exceptions import InvalidLocationError, InsufficientSpecificationError
 from xmodule.errortracker import make_error_tracker
-from opaque_keys.edx.keys import CourseKey, UsageKey
+from xmodule.assetstore import AssetMetadata
+from opaque_keys.edx.keys import CourseKey, UsageKey, AssetKey
 from opaque_keys.edx.locations import Location  # For import backwards compatibility
 from opaque_keys import InvalidKeyError
 from opaque_keys.edx.locations import SlashSeparatedCourseKey
@@ -25,6 +33,10 @@ from xblock.runtime import Mixologist
 from xblock.core import XBlock
 
 log = logging.getLogger('edx.modulestore')
+
+new_contract('CourseKey', CourseKey)
+new_contract('AssetKey', AssetKey)
+new_contract('AssetMetadata', AssetMetadata)
 
 
 class ModuleStoreEnum(object):
@@ -71,6 +83,7 @@ class ModuleStoreEnum(object):
         """
         draft = 'draft-branch'
         published = 'published-branch'
+        library = 'library'
 
     class UserID(object):
         """
@@ -88,18 +101,450 @@ class ModuleStoreEnum(object):
         # user ID to use for tests that do not have a django user available
         test = -3
 
-class PublishState(object):
+    class SortOrder(object):
+        """
+        Values for sorting asset metadata.
+        """
+        ascending = 1
+        descending = 2
+
+
+class BulkOpsRecord(object):
     """
-    The publish state for a given xblock-- either 'draft', 'private', or 'public'.
-
-    Currently in CMS, an xblock can only be in 'draft' or 'private' if it is at or below the Unit level.
+    For handling nesting of bulk operations
     """
-    draft = 'draft'
-    private = 'private'
-    public = 'public'
+    def __init__(self):
+        self._active_count = 0
+
+    @property
+    def active(self):
+        """
+        Return whether this bulk write is active.
+        """
+        return self._active_count > 0
+
+    def nest(self):
+        """
+        Record another level of nesting of this bulk write operation
+        """
+        self._active_count += 1
+
+    def unnest(self):
+        """
+        Record the completion of a level of nesting of the bulk write operation
+        """
+        self._active_count -= 1
+
+    @property
+    def is_root(self):
+        """
+        Return whether the bulk write is at the root (first) level of nesting
+        """
+        return self._active_count == 1
 
 
-class ModuleStoreRead(object):
+class ActiveBulkThread(threading.local):
+    """
+    Add the expected vars to the thread.
+    """
+    def __init__(self, bulk_ops_record_type, **kwargs):
+        super(ActiveBulkThread, self).__init__(**kwargs)
+        self.records = defaultdict(bulk_ops_record_type)
+
+
+class BulkOperationsMixin(object):
+    """
+    This implements the :meth:`bulk_operations` modulestore semantics which handles nested invocations
+
+    In particular, it implements :meth:`_begin_bulk_operation` and
+    :meth:`_end_bulk_operation` to provide the external interface
+
+    Internally, this mixin records the set of all active bulk operations (keyed on the active course),
+    and only writes those values when :meth:`_end_bulk_operation` is called.
+    If a bulk write operation isn't active, then the changes are immediately written to the underlying
+    mongo_connection.
+    """
+    def __init__(self, *args, **kwargs):
+        super(BulkOperationsMixin, self).__init__(*args, **kwargs)
+        self._active_bulk_ops = ActiveBulkThread(self._bulk_ops_record_type)
+
+    @contextmanager
+    def bulk_operations(self, course_id):
+        """
+        A context manager for notifying the store of bulk operations. This affects only the current thread.
+
+        In the case of Mongo, it temporarily disables refreshing the metadata inheritance tree
+        until the bulk operation is completed.
+        """
+        try:
+            self._begin_bulk_operation(course_id)
+            yield
+        finally:
+            self._end_bulk_operation(course_id)
+
+    # the relevant type of bulk_ops_record for the mixin (overriding classes should override
+    # this variable)
+    _bulk_ops_record_type = BulkOpsRecord
+
+    def _get_bulk_ops_record(self, course_key, ignore_case=False):
+        """
+        Return the :class:`.BulkOpsRecord` for this course.
+        """
+        if course_key is None:
+            return self._bulk_ops_record_type()
+
+        # Retrieve the bulk record based on matching org/course/run (possibly ignoring case)
+        if ignore_case:
+            for key, record in self._active_bulk_ops.records.iteritems():
+                if (
+                    key.org.lower() == course_key.org.lower() and
+                    key.course.lower() == course_key.course.lower() and
+                    key.run.lower() == course_key.run.lower()
+                ):
+                    return record
+        return self._active_bulk_ops.records[course_key.for_branch(None)]
+
+    @property
+    def _active_records(self):
+        """
+        Yield all active (CourseLocator, BulkOpsRecord) tuples.
+        """
+        for course_key, record in self._active_bulk_ops.records.iteritems():
+            if record.active:
+                yield (course_key, record)
+
+    def _clear_bulk_ops_record(self, course_key):
+        """
+        Clear the record for this course
+        """
+        del self._active_bulk_ops.records[course_key.for_branch(None)]
+
+    def _start_outermost_bulk_operation(self, bulk_ops_record, course_key):
+        """
+        The outermost nested bulk_operation call: do the actual begin of the bulk operation.
+
+        Implementing classes must override this method; otherwise, the bulk operations are a noop
+        """
+        pass
+
+    def _begin_bulk_operation(self, course_key):
+        """
+        Begin a bulk operation on course_key.
+        """
+        bulk_ops_record = self._get_bulk_ops_record(course_key)
+
+        # Increment the number of active bulk operations (bulk operations
+        # on the same course can be nested)
+        bulk_ops_record.nest()
+
+        # If this is the highest level bulk operation, then initialize it
+        if bulk_ops_record.is_root:
+            self._start_outermost_bulk_operation(bulk_ops_record, course_key)
+
+    def _end_outermost_bulk_operation(self, bulk_ops_record, course_key):
+        """
+        The outermost nested bulk_operation call: do the actual end of the bulk operation.
+
+        Implementing classes must override this method; otherwise, the bulk operations are a noop
+        """
+        pass
+
+    def _end_bulk_operation(self, course_key):
+        """
+        End the active bulk operation on course_key.
+        """
+        # If no bulk op is active, return
+        bulk_ops_record = self._get_bulk_ops_record(course_key)
+        if not bulk_ops_record.active:
+            return
+
+        bulk_ops_record.unnest()
+
+        # If this wasn't the outermost context, then don't close out the
+        # bulk operation.
+        if bulk_ops_record.active:
+            return
+
+        self._end_outermost_bulk_operation(bulk_ops_record, course_key)
+
+        self._clear_bulk_ops_record(course_key)
+
+    def _is_in_bulk_operation(self, course_key, ignore_case=False):
+        """
+        Return whether a bulk operation is active on `course_key`.
+        """
+        return self._get_bulk_ops_record(course_key, ignore_case).active
+
+
+class IncorrectlySortedList(Exception):
+    """
+    Thrown when calling find() on a SortedAssetList not sorted by filename.
+    """
+    pass
+
+
+class SortedAssetList(SortedListWithKey):
+    """
+    List of assets that is sorted based on an asset attribute.
+    """
+    def __init__(self, **kwargs):
+        self.filename_sort = False
+        key_func = kwargs.get('key', None)
+        if key_func is None:
+            kwargs['key'] = itemgetter('filename')
+            self.filename_sort = True
+        super(SortedAssetList, self).__init__(**kwargs)
+
+    @contract(asset_id=AssetKey)
+    def find(self, asset_id):
+        """
+        Find the index of a particular asset in the list. This method is only functional for lists
+        sorted by filename. If the list is sorted on any other key, find() raises a
+        Returns: Index of asset, if found. None if not found.
+        """
+        # Don't attempt to find an asset by filename in a list that's not sorted by filename.
+        if not self.filename_sort:
+            raise IncorrectlySortedList()
+        # See if this asset already exists by checking the external_filename.
+        # Studio doesn't currently support using multiple course assets with the same filename.
+        # So use the filename as the unique identifier.
+        idx = None
+        idx_left = self.bisect_left({'filename': asset_id.path})
+        idx_right = self.bisect_right({'filename': asset_id.path})
+        if idx_left != idx_right:
+            # Asset was found in the list.
+            idx = idx_left
+        return idx
+
+    @contract(asset_md=AssetMetadata)
+    def insert_or_update(self, asset_md):
+        """
+        Insert asset metadata if asset is not present. Update asset metadata if asset is already present.
+        """
+        metadata_to_insert = asset_md.to_storable()
+        asset_idx = self.find(asset_md.asset_id)
+        if asset_idx is None:
+            # Add new metadata sorted into the list.
+            self.add(metadata_to_insert)
+        else:
+            # Replace existing metadata.
+            self[asset_idx] = metadata_to_insert
+
+
+class ModuleStoreAssetBase(object):
+    """
+    The methods for accessing assets and their metadata
+    """
+    def _find_course_asset(self, asset_key):
+        """
+        Returns same as _find_course_assets plus the index to the given asset or None. Does not convert
+        to AssetMetadata; thus, is internal.
+
+        Arguments:
+            asset_key (AssetKey): what to look for
+
+        Returns:
+            Tuple of:
+            - AssetMetadata[] for all assets of the given asset_key's type
+            - the index of asset in list (None if asset does not exist)
+        """
+        course_assets = self._find_course_assets(asset_key.course_key)
+        all_assets = SortedAssetList(iterable=[])
+        # Assets should be pre-sorted, so add them efficiently without sorting.
+        # extend() will raise a ValueError if the passed-in list is not sorted.
+        all_assets.extend(course_assets.setdefault(asset_key.block_type, []))
+        idx = all_assets.find(asset_key)
+
+        return course_assets, idx
+
+    @contract(asset_key='AssetKey')
+    def find_asset_metadata(self, asset_key, **kwargs):
+        """
+        Find the metadata for a particular course asset.
+
+        Arguments:
+            asset_key (AssetKey): key containing original asset filename
+
+        Returns:
+            asset metadata (AssetMetadata) -or- None if not found
+        """
+        course_assets, asset_idx = self._find_course_asset(asset_key)
+        if asset_idx is None:
+            return None
+
+        mdata = AssetMetadata(asset_key, asset_key.path, **kwargs)
+        all_assets = course_assets[asset_key.asset_type]
+        mdata.from_storable(all_assets[asset_idx])
+        return mdata
+
+    @contract(
+        course_key='CourseKey', asset_type='None | basestring',
+        start='int | None', maxresults='int | None', sort='tuple(str,(int,>=1,<=2))|None'
+    )
+    def get_all_asset_metadata(self, course_key, asset_type, start=0, maxresults=-1, sort=None, **kwargs):
+        """
+        Returns a list of asset metadata for all assets of the given asset_type in the course.
+
+        Args:
+            course_key (CourseKey): course identifier
+            asset_type (str): the block_type of the assets to return. If None, return assets of all types.
+            start (int): optional - start at this asset number. Zero-based!
+            maxresults (int): optional - return at most this many, -1 means no limit
+            sort (array): optional - None means no sort
+                (sort_by (str), sort_order (str))
+                sort_by - one of 'uploadDate' or 'displayname'
+                sort_order - one of SortOrder.ascending or SortOrder.descending
+
+        Returns:
+            List of AssetMetadata objects.
+        """
+        course_assets = self._find_course_assets(course_key)
+
+        # Determine the proper sort - with defaults of ('displayname', SortOrder.ascending).
+        key_func = None
+        sort_order = ModuleStoreEnum.SortOrder.ascending
+        if sort:
+            if sort[0] == 'uploadDate':
+                key_func = lambda x: x['edit_info']['edited_on']
+            if sort[1] == ModuleStoreEnum.SortOrder.descending:
+                sort_order = ModuleStoreEnum.SortOrder.descending
+
+        if asset_type is None:
+            # Add assets of all types to the sorted list.
+            all_assets = SortedAssetList(iterable=[], key=key_func)
+            for asset_type, val in course_assets.iteritems():
+                all_assets.update(val)
+        else:
+            # Add assets of a single type to the sorted list.
+            all_assets = SortedAssetList(iterable=course_assets.get(asset_type, []), key=key_func)
+        num_assets = len(all_assets)
+
+        start_idx = start
+        end_idx = min(num_assets, start + maxresults)
+        if maxresults < 0:
+            # No limit on the results.
+            end_idx = num_assets
+
+        step_incr = 1
+        if sort_order == ModuleStoreEnum.SortOrder.descending:
+            # Flip the indices and iterate backwards.
+            step_incr = -1
+            start_idx = (num_assets - 1) - start_idx
+            end_idx = (num_assets - 1) - end_idx
+
+        ret_assets = []
+        for idx in xrange(start_idx, end_idx, step_incr):
+            raw_asset = all_assets[idx]
+            asset_key = course_key.make_asset_key(raw_asset['asset_type'], raw_asset['filename'])
+            new_asset = AssetMetadata(asset_key)
+            new_asset.from_storable(raw_asset)
+            ret_assets.append(new_asset)
+        return ret_assets
+
+
+class ModuleStoreAssetWriteInterface(ModuleStoreAssetBase):
+    """
+    The write operations for assets and asset metadata
+    """
+    def _save_assets_by_type(self, course_key, asset_metadata_list, course_assets, user_id, import_only):
+        """
+        Common private method that saves/updates asset metadata items in the internal modulestore
+        structure used to store asset metadata items.
+        """
+        # Lazily create a sorted list if not already created.
+        assets_by_type = defaultdict(lambda: SortedAssetList(iterable=course_assets.get(asset_type, [])))
+
+        for asset_md in asset_metadata_list:
+            if asset_md.asset_id.course_key != course_key:
+                # pylint: disable=logging-format-interpolation
+                log.warning("Asset's course {} does not match other assets for course {} - not saved.".format(
+                    asset_md.asset_id.course_key, course_key
+                ))
+                continue
+            if not import_only:
+                asset_md.update({'edited_by': user_id, 'edited_on': datetime.datetime.now(UTC)})
+            asset_type = asset_md.asset_id.asset_type
+            all_assets = assets_by_type[asset_type]
+            all_assets.insert_or_update(asset_md)
+        return assets_by_type
+
+    @contract(asset_metadata='AssetMetadata')
+    def save_asset_metadata(self, asset_metadata, user_id, import_only):
+        """
+        Saves the asset metadata for a particular course's asset.
+
+        Arguments:
+            asset_metadata (AssetMetadata): data about the course asset data
+            user_id (int): user ID saving the asset metadata
+            import_only (bool): True if importing without editing, False if editing
+
+        Returns:
+            True if metadata save was successful, else False
+        """
+        raise NotImplementedError()
+
+    @contract(asset_metadata_list='list(AssetMetadata)')
+    def save_asset_metadata_list(self, asset_metadata_list, user_id, import_only):
+        """
+        Saves a list of asset metadata for a particular course's asset.
+
+        Arguments:
+            asset_metadata (AssetMetadata): data about the course asset data
+            user_id (int): user ID saving the asset metadata
+            import_only (bool): True if importing without editing, False if editing
+
+        Returns:
+            True if metadata save was successful, else False
+        """
+        raise NotImplementedError()
+
+    def set_asset_metadata_attrs(self, asset_key, attrs, user_id):
+        """
+        Base method to over-ride in modulestore.
+        """
+        raise NotImplementedError()
+
+    def delete_asset_metadata(self, asset_key, user_id):
+        """
+        Base method to over-ride in modulestore.
+        """
+        raise NotImplementedError()
+
+    @contract(asset_key='AssetKey', attr=str)
+    def set_asset_metadata_attr(self, asset_key, attr, value, user_id):
+        """
+        Add/set the given attr on the asset at the given location. Value can be any type which pymongo accepts.
+
+        Arguments:
+            asset_key (AssetKey): asset identifier
+            attr (str): which attribute to set
+            value: the value to set it to (any type pymongo accepts such as datetime, number, string)
+            user_id (int): user ID saving the asset metadata
+
+        Raises:
+            ItemNotFoundError if no such item exists
+            AttributeError is attr is one of the build in attrs.
+        """
+        return self.set_asset_metadata_attrs(asset_key, {attr: value}, user_id)
+
+    @contract(source_course_key='CourseKey', dest_course_key='CourseKey')
+    def copy_all_asset_metadata(self, source_course_key, dest_course_key, user_id):
+        """
+        Copy all the course assets from source_course_key to dest_course_key.
+        NOTE: unlike get_all_asset_metadata, this does not take an asset type because
+        this function is intended for things like cloning or exporting courses not for
+        clients to list assets.
+
+        Arguments:
+            source_course_key (CourseKey): identifier of course to copy from
+            dest_course_key (CourseKey): identifier of course to copy to
+            user_id (int): user ID copying the asset metadata
+        """
+        pass
+
+
+# pylint: disable=abstract-method
+class ModuleStoreRead(ModuleStoreAssetBase):
     """
     An abstract interface for a database backend that stores XModuleDescriptor
     instances and extends read-only functionality
@@ -115,7 +560,7 @@ class ModuleStoreRead(object):
         pass
 
     @abstractmethod
-    def get_item(self, usage_key, depth=0):
+    def get_item(self, usage_key, depth=0, **kwargs):
         """
         Returns an XModuleDescriptor instance for the item at location.
 
@@ -149,18 +594,13 @@ class ModuleStoreRead(object):
         pass
 
     @abstractmethod
-    def get_items(self, location, course_id=None, depth=0, qualifiers=None):
+    def get_items(self, course_id, qualifiers=None, **kwargs):
         """
         Returns a list of XModuleDescriptor instances for the items
         that match location. Any element of location that is None is treated
         as a wildcard that matches any value
 
         location: Something that can be passed to Location
-
-        depth: An argument that some module stores may use to prefetch
-            descendents of the queried modules for more efficient results later
-            in the request. The depth is counted in the number of calls to
-            get_children() to cache. None indicates to cache all descendents
         """
         pass
 
@@ -215,19 +655,36 @@ class ModuleStoreRead(object):
         If target is a list, do any of the list elements meet the criteria
         If the criteria is a regex, does the target match it?
         If the criteria is a function, does invoking it on the target yield something truthy?
+        If criteria is a dict {($nin|$in): []}, then do (none|any) of the list elements meet the criteria
         Otherwise, is the target == criteria
         '''
         if isinstance(target, list):
             return any(self._value_matches(ele, criteria) for ele in target)
-        elif isinstance(criteria, re._pattern_type):
+        elif isinstance(criteria, re._pattern_type):  # pylint: disable=protected-access
             return criteria.search(target) is not None
         elif callable(criteria):
             return criteria(target)
+        elif isinstance(criteria, dict) and '$in' in criteria:
+            # note isn't handling any other things in the dict other than in
+            return any(self._value_matches(target, test_val) for test_val in criteria['$in'])
+        elif isinstance(criteria, dict) and '$nin' in criteria:
+            # note isn't handling any other things in the dict other than nin
+            return not any(self._value_matches(target, test_val) for test_val in criteria['$nin'])
         else:
             return criteria == target
 
     @abstractmethod
-    def get_courses(self):
+    def make_course_key(self, org, course, run):
+        """
+        Return a valid :class:`~opaque_keys.edx.keys.CourseKey` for this modulestore
+        that matches the supplied `org`, `course`, and `run`.
+
+        This key may represent a course that doesn't exist in this modulestore.
+        """
+        pass
+
+    @abstractmethod
+    def get_courses(self, **kwargs):
         '''
         Returns a list containing the top level XModuleDescriptors of the courses
         in this modulestore.
@@ -235,7 +692,7 @@ class ModuleStoreRead(object):
         pass
 
     @abstractmethod
-    def get_course(self, course_id, depth=0):
+    def get_course(self, course_id, depth=0, **kwargs):
         '''
         Look for a specific course by its id (:class:`CourseKey`).
         Returns the course descriptor, or None if not found.
@@ -243,7 +700,7 @@ class ModuleStoreRead(object):
         pass
 
     @abstractmethod
-    def has_course(self, course_id, ignore_case=False):
+    def has_course(self, course_id, ignore_case=False, **kwargs):
         '''
         Look for a specific course id.  Returns whether it exists.
         Args:
@@ -255,13 +712,14 @@ class ModuleStoreRead(object):
 
     @abstractmethod
     def get_parent_location(self, location, **kwargs):
-        '''Find the location that is the parent of this location in this
+        '''
+        Find the location that is the parent of this location in this
         course.  Needed for path_to_location().
         '''
         pass
 
     @abstractmethod
-    def get_orphans(self, course_key):
+    def get_orphans(self, course_key, **kwargs):
         """
         Get all of the xblocks in the given course which have no parents and are not of types which are
         usually orphaned. NOTE: may include xblocks which still have references via xblocks which don't
@@ -286,19 +744,48 @@ class ModuleStoreRead(object):
         pass
 
     @abstractmethod
-    def compute_publish_state(self, xblock):
+    def get_courses_for_wiki(self, wiki_slug, **kwargs):
         """
-        Returns whether this xblock is draft, public, or private.
-
-        Returns:
-            PublishState.draft - content is in the process of being edited, but still has a previous
-                version deployed to LMS
-            PublishState.public - content is locked and deployed to LMS
-            PublishState.private - content is editable and not deployed to LMS
+        Return the list of courses which use this wiki_slug
+        :param wiki_slug: the course wiki root slug
+        :return: list of course keys
         """
         pass
 
-class ModuleStoreWrite(ModuleStoreRead):
+    @abstractmethod
+    def has_published_version(self, xblock):
+        """
+        Returns true if this xblock exists in the published course regardless of whether it's up to date
+        """
+        pass
+
+    @abstractmethod
+    def close_connections(self):
+        """
+        Closes any open connections to the underlying databases
+        """
+        pass
+
+    @contextmanager
+    def bulk_operations(self, course_id):
+        """
+        A context manager for notifying the store of bulk operations. This affects only the current thread.
+        """
+        yield
+
+    def ensure_indexes(self):
+        """
+        Ensure that all appropriate indexes are created that are needed by this modulestore, or raise
+        an exception if unable to.
+
+        This method is intended for use by tests and administrative commands, and not
+        to be run during server startup.
+        """
+        pass
+
+
+# pylint: disable=abstract-method
+class ModuleStoreWrite(ModuleStoreRead, ModuleStoreAssetWriteInterface):
     """
     An abstract interface for a database backend that stores XModuleDescriptor
     instances and extends both read and write functionality
@@ -307,7 +794,7 @@ class ModuleStoreWrite(ModuleStoreRead):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def update_item(self, xblock, user_id, allow_not_found=False, force=False):
+    def update_item(self, xblock, user_id, allow_not_found=False, force=False, **kwargs):
         """
         Update the given xblock's persisted repr. Pass the user's unique id which the persistent store
         should save with the update if it has that ability.
@@ -359,7 +846,26 @@ class ModuleStoreWrite(ModuleStoreRead):
         pass
 
     @abstractmethod
-    def clone_course(self, source_course_id, dest_course_id, user_id):
+    def create_item(self, user_id, course_key, block_type, block_id=None, fields=None, **kwargs):
+        """
+        Creates and saves a new item in a course.
+
+        Returns the newly created item.
+
+        Args:
+            user_id: ID of the user creating and saving the xmodule
+            course_key: A :class:`~opaque_keys.edx.CourseKey` identifying which course to create
+                this item in
+            block_type: The type of block to create
+            block_id: a unique identifier for the new item. If not supplied,
+                a new identifier will be generated
+            fields (dict): A dictionary specifying initial values for some or all fields
+                in the newly created block
+        """
+        pass
+
+    @abstractmethod
+    def clone_course(self, source_course_id, dest_course_id, user_id, fields=None):
         """
         Sets up source_course_id to point a course with the same content as the desct_course_id. This
         operation may be cheap or expensive. It may have to copy all assets and all xblock content or
@@ -376,7 +882,7 @@ class ModuleStoreWrite(ModuleStoreRead):
         pass
 
     @abstractmethod
-    def delete_course(self, course_key, user_id):
+    def delete_course(self, course_key, user_id, **kwargs):
         """
         Deletes the course. It may be a soft or hard delete. It may or may not remove the xblock definitions
         depending on the persistence layer and how tightly bound the xblocks are to the course.
@@ -387,15 +893,25 @@ class ModuleStoreWrite(ModuleStoreRead):
         """
         pass
 
+    @abstractmethod
+    def _drop_database(self):
+        """
+        A destructive operation to drop the underlying database and close all connections.
+        Intended to be used by test code for cleanup.
+        """
+        pass
 
-class ModuleStoreReadBase(ModuleStoreRead):
+
+# pylint: disable=abstract-method
+class ModuleStoreReadBase(BulkOperationsMixin, ModuleStoreRead):
     '''
     Implement interface functionality that can be shared.
     '''
-    # pylint: disable=W0613
 
+    # pylint: disable=invalid-name
     def __init__(
         self,
+        contentstore=None,
         doc_store_config=None,  # ignore if passed up
         metadata_inheritance_cache_subsystem=None, request_cache=None,
         xblock_mixins=(), xblock_select=None,
@@ -407,11 +923,15 @@ class ModuleStoreReadBase(ModuleStoreRead):
         '''
         Set up the error-tracking logic.
         '''
+        super(ModuleStoreReadBase, self).__init__(**kwargs)
         self._course_errors = defaultdict(make_error_tracker)  # location -> ErrorLog
+        # pylint: disable=fixme
+        # TODO move the inheritance_cache_subsystem to classes which use it
         self.metadata_inheritance_cache_subsystem = metadata_inheritance_cache_subsystem
         self.request_cache = request_cache
         self.xblock_mixins = xblock_mixins
         self.xblock_select = xblock_select
+        self.contentstore = contentstore
 
     def get_course_errors(self, course_key):
         """
@@ -419,6 +939,7 @@ class ModuleStoreReadBase(ModuleStoreRead):
         errors as get_item if course_key isn't present.
         """
         # check that item is present and raise the promised exceptions if needed
+        # pylint: disable=fixme
         # TODO (vshnayder): post-launch, make errors properties of items
         # self.get_item(location)
         assert(isinstance(course_key, CourseKey))
@@ -433,19 +954,19 @@ class ModuleStoreReadBase(ModuleStoreRead):
         """
         return {}
 
-    def get_course(self, course_id, depth=0):
+    def get_course(self, course_id, depth=0, **kwargs):
         """
         See ModuleStoreRead.get_course
 
         Default impl--linear search through course list
         """
         assert(isinstance(course_id, CourseKey))
-        for course in self.get_courses():
+        for course in self.get_courses(**kwargs):
             if course.id == course_id:
                 return course
         return None
 
-    def has_course(self, course_id, ignore_case=False):
+    def has_course(self, course_id, ignore_case=False, **kwargs):
         """
         Returns the course_id of the course if it was found, else None
         Args:
@@ -471,11 +992,11 @@ class ModuleStoreReadBase(ModuleStoreRead):
                 None
             )
 
-    def compute_publish_state(self, xblock):
+    def has_published_version(self, xblock):
         """
-        Returns PublishState.public since this is a read-only store.
+        Returns True since this is a read-only store.
         """
-        return PublishState.public
+        return True
 
     def heartbeat(self):
         """
@@ -483,6 +1004,14 @@ class ModuleStoreReadBase(ModuleStoreRead):
         """
         # default is to say yes by not raising an exception
         return {'default_impl': True}
+
+    def close_connections(self):
+        """
+        Closes any open connections to the underlying databases
+        """
+        if self.contentstore:
+            self.contentstore.close_connections()
+        super(ModuleStoreReadBase, self).close_connections()
 
     @contextmanager
     def default_store(self, store_type):
@@ -493,30 +1022,49 @@ class ModuleStoreReadBase(ModuleStoreRead):
             raise ValueError(u"Cannot set default store to type {}".format(store_type))
         yield
 
-    @contextmanager
-    def branch_setting(self, branch_setting, course_id=None):
+    @staticmethod
+    def memoize_request_cache(func):
         """
-        A context manager for temporarily setting a store's branch value
+        Memoize a function call results on the request_cache if there's one. Creates the cache key by
+        joining the unicode of all the args with &; so, if your arg may use the default &, it may
+        have false hits
         """
-        previous_branch_setting_func = getattr(self, 'branch_setting_func', None)
-        try:
-            self.branch_setting_func = lambda: branch_setting
-            yield
-        finally:
-            self.branch_setting_func = previous_branch_setting_func
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            """
+            Wraps a method to memoize results.
+            """
+            if self.request_cache:
+                cache_key = '&'.join([hashvalue(arg) for arg in args])
+                if cache_key in self.request_cache.data.setdefault(func.__name__, {}):
+                    return self.request_cache.data[func.__name__][cache_key]
+
+                result = func(self, *args, **kwargs)
+
+                self.request_cache.data[func.__name__][cache_key] = result
+                return result
+            else:
+                return func(self, *args, **kwargs)
+        return wrapper
 
 
+def hashvalue(arg):
+    """
+    If arg is an xblock, use its location. otherwise just turn it into a string
+    """
+    if isinstance(arg, XBlock):
+        return unicode(arg.location)
+    else:
+        return unicode(arg)
+
+
+# pylint: disable=abstract-method
 class ModuleStoreWriteBase(ModuleStoreReadBase, ModuleStoreWrite):
     '''
     Implement interface functionality that can be shared.
     '''
     def __init__(self, contentstore, **kwargs):
-        super(ModuleStoreWriteBase, self).__init__(**kwargs)
-
-        self.contentstore = contentstore
-        # TODO: Don't have a runtime just to generate the appropriate mixin classes (cpennington)
-        # This is only used by partition_fields_by_scope, which is only needed because
-        # the split mongo store is used for item creation as well as item persistence
+        super(ModuleStoreWriteBase, self).__init__(contentstore=contentstore, **kwargs)
         self.mixologist = Mixologist(self.xblock_mixins)
 
     def partition_fields_by_scope(self, category, fields):
@@ -526,100 +1074,85 @@ class ModuleStoreWriteBase(ModuleStoreReadBase, ModuleStoreWrite):
         :param category: the xblock category
         :param fields: the dictionary of {fieldname: value}
         """
-        if fields is None:
-            return {}
-        cls = self.mixologist.mix(XBlock.load_class(category, select=prefer_xmodules))
         result = collections.defaultdict(dict)
+        if fields is None:
+            return result
+        cls = self.mixologist.mix(XBlock.load_class(category, select=prefer_xmodules))
         for field_name, value in fields.iteritems():
             field = getattr(cls, field_name)
             result[field.scope][field_name] = value
         return result
 
-    def update_item(self, xblock, user_id, allow_not_found=False, force=False):
+    def create_course(self, org, course, run, user_id, fields=None, runtime=None, **kwargs):
         """
-        Update the given xblock's persisted repr. Pass the user's unique id which the persistent store
-        should save with the update if it has that ability.
-
-        :param allow_not_found: whether this method should raise an exception if the given xblock
-        has not been persisted before.
-        :param force: fork the structure and don't update the course draftVersion if there's a version
-        conflict (only applicable to version tracking and conflict detecting persistence stores)
-
-        :raises VersionConflictError: if org, course, run, and version_guid given and the current
-        version head != version_guid and force is not True. (only applicable to version tracking stores)
+        Creates any necessary other things for the course as a side effect and doesn't return
+        anything useful. The real subclass should call this before it returns the course.
         """
-        raise NotImplementedError
+        # clone a default 'about' overview module as well
+        about_location = self.make_course_key(org, course, run).make_usage_key('about', 'overview')
 
-    def delete_item(self, location, user_id, force=False):
-        """
-        Delete an item from persistence. Pass the user's unique id which the persistent store
-        should save with the update if it has that ability.
+        about_descriptor = XBlock.load_class('about')
+        overview_template = about_descriptor.get_template('overview.yaml')
+        self.create_item(
+            user_id,
+            about_location.course_key,
+            about_location.block_type,
+            block_id=about_location.block_id,
+            definition_data={'data': overview_template.get('data')},
+            metadata=overview_template.get('metadata'),
+            runtime=runtime,
+            continue_version=True,
+        )
 
-        :param user_id: ID of the user deleting the item
-        :param force: fork the structure and don't update the course draftVersion if there's a version
-        conflict (only applicable to version tracking and conflict detecting persistence stores)
-
-        :raises VersionConflictError: if org, course, run, and version_guid given and the current
-        version head != version_guid and force is not True. (only applicable to version tracking stores)
-        """
-        raise NotImplementedError
-
-    def create_and_save_xmodule(self, location, user_id, definition_data=None, metadata=None, runtime=None, fields={}):
-        """
-        Create the new xmodule and save it.
-
-        :param location: a Location--must have a category
-        :param user_id: ID of the user creating and saving the xmodule
-        :param definition_data: can be empty. The initial definition_data for the kvs
-        :param metadata: can be empty, the initial metadata for the kvs
-        :param runtime: if you already have an xblock from the course, the xblock.runtime value
-        :param fields: a dictionary of field names and values for the new xmodule
-        """
-        new_object = self.create_xmodule(location, definition_data, metadata, runtime, fields)
-        self.update_item(new_object, user_id, allow_not_found=True)
-        return new_object
-
-    def clone_course(self, source_course_id, dest_course_id, user_id):
+    def clone_course(self, source_course_id, dest_course_id, user_id, fields=None, **kwargs):
         """
         This base method just copies the assets. The lower level impls must do the actual cloning of
         content.
         """
         # copy the assets
-        self.contentstore.copy_all_course_assets(source_course_id, dest_course_id)
-        super(ModuleStoreWriteBase, self).clone_course(source_course_id, dest_course_id, user_id)
+        if self.contentstore:
+            self.contentstore.copy_all_course_assets(source_course_id, dest_course_id)
         return dest_course_id
 
-    def delete_course(self, course_key, user_id):
+    def delete_course(self, course_key, user_id, **kwargs):
         """
         This base method just deletes the assets. The lower level impls must do the actual deleting of
         content.
         """
         # delete the assets
-        self.contentstore.delete_all_course_assets(course_key)
+        if self.contentstore:
+            self.contentstore.delete_all_course_assets(course_key)
         super(ModuleStoreWriteBase, self).delete_course(course_key, user_id)
 
-    @contextmanager
-    def bulk_write_operations(self, course_id):
+    def _drop_database(self):
         """
-        A context manager for notifying the store of bulk write events.
+        A destructive operation to drop the underlying database and close all connections.
+        Intended to be used by test code for cleanup.
+        """
+        if self.contentstore:
+            self.contentstore._drop_database()  # pylint: disable=protected-access
+        super(ModuleStoreWriteBase, self)._drop_database()  # pylint: disable=protected-access
 
-        In the case of Mongo, it temporarily disables refreshing the metadata inheritance tree
-        until the bulk operation is completed.
+    def create_child(self, user_id, parent_usage_key, block_type, block_id=None, fields=None, **kwargs):
         """
-        # TODO
-        # Make this multi-process-safe if future operations need it.
-        # Right now, only Import Course, Clone Course, and Delete Course use this, so
-        # it's ok if the cached metadata in the memcache is invalid when another
-        # request comes in for the same course.
-        try:
-            if hasattr(self, '_begin_bulk_write_operation'):
-                self._begin_bulk_write_operation(course_id)
-            yield
-        finally:
-            # check for the begin method here,
-            # since it's an error if an end method is not defined when a begin method is
-            if hasattr(self, '_begin_bulk_write_operation'):
-                self._end_bulk_write_operation(course_id)
+        Creates and saves a new xblock that as a child of the specified block
+
+        Returns the newly created item.
+
+        Args:
+            user_id: ID of the user creating and saving the xmodule
+            parent_usage_key: a :class:`~opaque_key.edx.UsageKey` identifing the
+                block that this item should be parented under
+            block_type: The type of block to create
+            block_id: a unique identifier for the new item. If not supplied,
+                a new identifier will be generated
+            fields (dict): A dictionary specifying initial values for some or all fields
+                in the newly created block
+        """
+        item = self.create_item(user_id, parent_usage_key.course_key, block_type, block_id=block_id, fields=fields, **kwargs)
+        parent = self.get_item(parent_usage_key)
+        parent.children.append(item.location)
+        self.update_item(parent, user_id)
 
 
 def only_xmodules(identifier, entry_points):
@@ -646,8 +1179,8 @@ class EdxJSONEncoder(json.JSONEncoder):
     ISO date strings
     """
     def default(self, obj):
-        if isinstance(obj, Location):
-            return obj.to_deprecated_string()
+        if isinstance(obj, (CourseKey, UsageKey)):
+            return unicode(obj)
         elif isinstance(obj, datetime.datetime):
             if obj.tzinfo is not None:
                 if obj.utcoffset() is None:

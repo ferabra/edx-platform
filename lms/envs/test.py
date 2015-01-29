@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 This config file runs the simplest dev environment using sqlite, and db-based
 sessions. Assumes structure:
@@ -10,15 +11,36 @@ sessions. Assumes structure:
 
 # We intentionally define lots of variables that aren't used, and
 # want to import all variables from base settings files
-# pylint: disable=W0401, W0614
+# pylint: disable=wildcard-import, unused-wildcard-import
+
+# Pylint gets confused by path.py instances, which report themselves as class
+# objects. As a result, pylint applies the wrong regex in validating names,
+# and throws spurious errors. Therefore, we disable invalid-name checking.
+# pylint: disable=invalid-name
 
 from .common import *
 import os
 from path import path
-from warnings import filterwarnings, simplefilter
+from tempfile import mkdtemp
 from uuid import uuid4
+from warnings import filterwarnings, simplefilter
+
+# Silence noisy logs to make troubleshooting easier when tests fail.
+import logging
+LOG_OVERRIDES = [
+    ('factory.generate', logging.ERROR),
+    ('factory.containers', logging.ERROR),
+]
+for log_name, log_level in LOG_OVERRIDES:
+    logging.getLogger(log_name).setLevel(log_level)
+
+# mongo connection settings
+MONGO_PORT_NUM = int(os.environ.get('EDXAPP_TEST_MONGO_PORT', '27017'))
+MONGO_HOST = os.environ.get('EDXAPP_TEST_MONGO_HOST', 'localhost')
 
 os.environ['DJANGO_LIVE_TEST_SERVER_ADDRESS'] = 'localhost:8000-9000'
+
+THIS_UUID = uuid4().hex[:5]
 
 # can't test start dates with this True, but on the other hand,
 # can test everything else :)
@@ -47,6 +69,8 @@ FEATURES['ALLOW_COURSE_STAFF_GRADE_DOWNLOADS'] = True
 # Toggles embargo on for testing
 FEATURES['EMBARGO'] = True
 
+FEATURES['ENABLE_COMBINED_LOGIN_REGISTRATION'] = True
+
 # Need wiki for courseware views to work. TODO (vshnayder): shouldn't need it.
 WIKI_ENABLED = True
 
@@ -56,14 +80,14 @@ SOUTH_TESTS_MIGRATE = False  # To disable migrations and use syncdb instead
 # Nose Test Runner
 TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
 
-_system = 'lms'
+_SYSTEM = 'lms'
 
-_report_dir = REPO_ROOT / 'reports' / _system
-_report_dir.makedirs_p()
+_REPORT_DIR = REPO_ROOT / 'reports' / _SYSTEM
+_REPORT_DIR.makedirs_p()
 
 NOSE_ARGS = [
-    '--id-file', REPO_ROOT / '.testids' / _system / 'noseids',
-    '--xunit-file', _report_dir / 'nosetests.xml',
+    '--id-file', REPO_ROOT / '.testids' / _SYSTEM / 'noseids',
+    '--xunit-file', _REPORT_DIR / 'nosetests.xml',
 ]
 
 # Local Directories
@@ -109,25 +133,35 @@ STATICFILES_DIRS += [
     if os.path.isdir(COMMON_TEST_DATA_ROOT / course_dir)
 ]
 
+# Avoid having to run collectstatic before the unit test suite
+# If we don't add these settings, then Django templates that can't
+# find pipelined assets will raise a ValueError.
+# http://stackoverflow.com/questions/12816941/unit-testing-with-django-pipeline
+STATICFILES_STORAGE = 'pipeline.storage.NonPackagingPipelineStorage'
+PIPELINE_ENABLED = False
+
 update_module_store_settings(
     MODULESTORE,
     module_store_options={
         'fs_root': TEST_ROOT / "data",
     },
     xml_store_options={
-        'data_dir': COMMON_TEST_DATA_ROOT,
+        'data_dir': mkdtemp(dir=TEST_ROOT),  # never inadvertently load all the XML courses
     },
     doc_store_settings={
+        'host': MONGO_HOST,
+        'port': MONGO_PORT_NUM,
         'db': 'test_xmodule',
-        'collection': 'test_modulestore{0}'.format(uuid4().hex[:5]),
+        'collection': 'test_modulestore{0}'.format(THIS_UUID),
     },
 )
 
 CONTENTSTORE = {
     'ENGINE': 'xmodule.contentstore.mongo.MongoContentStore',
     'DOC_STORE_CONFIG': {
-        'host': 'localhost',
+        'host': MONGO_HOST,
         'db': 'xcontent',
+        'port': MONGO_PORT_NUM,
     }
 }
 
@@ -162,7 +196,7 @@ CACHES = {
 
     'mongo_metadata_inheritance': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': '/var/tmp/mongo_metadata_inheritance',
+        'LOCATION': os.path.join(tempfile.gettempdir(), 'mongo_metadata_inheritance'),
         'TIMEOUT': 300,
         'KEY_FUNCTION': 'util.memcache.safe_key',
     },
@@ -181,11 +215,34 @@ filterwarnings('ignore', message='No request passed to the backend, unable to ra
 
 # Ignore deprecation warnings (so we don't clutter Jenkins builds/production)
 # https://docs.python.org/2/library/warnings.html#the-warnings-filter
-simplefilter('ignore')  # Change to "default" to see the first instance of each hit
-                        # or "error" to convert all into errors
+# Change to "default" to see the first instance of each hit
+# or "error" to convert all into errors
+simplefilter('ignore')
+
+############################# SECURITY SETTINGS ################################
+# Default to advanced security in common.py, so tests can reset here to use
+# a simpler security model
+FEATURES['ENFORCE_PASSWORD_POLICY'] = False
+FEATURES['ENABLE_MAX_FAILED_LOGIN_ATTEMPTS'] = False
+FEATURES['SQUELCH_PII_IN_LOGS'] = False
+FEATURES['PREVENT_CONCURRENT_LOGINS'] = False
+FEATURES['ADVANCED_SECURITY'] = False
+PASSWORD_MIN_LENGTH = None
+PASSWORD_COMPLEXITY = {}
 
 ######### Third-party auth ##########
 FEATURES['ENABLE_THIRD_PARTY_AUTH'] = True
+
+THIRD_PARTY_AUTH = {
+    "Google": {
+        "SOCIAL_AUTH_GOOGLE_OAUTH2_KEY": "test",
+        "SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET": "test",
+    },
+    "Facebook": {
+        "SOCIAL_AUTH_GOOGLE_OAUTH2_KEY": "test",
+        "SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET": "test",
+    },
+}
 
 ################################## OPENID #####################################
 FEATURES['AUTH_USE_OPENID'] = True
@@ -201,24 +258,35 @@ OPENID_UPDATE_DETAILS_FROM_SREG = True
 OPENID_USE_AS_ADMIN_LOGIN = False
 OPENID_PROVIDER_TRUSTED_ROOTS = ['*']
 
+############################## OAUTH2 Provider ################################
+FEATURES['ENABLE_OAUTH2_PROVIDER'] = True
+
+########################### External REST APIs #################################
+FEATURES['ENABLE_MOBILE_REST_API'] = True
+FEATURES['ENABLE_VIDEO_ABSTRACTION_LAYER_API'] = True
+
 ###################### Payment ##############################3
 # Enable fake payment processing page
 FEATURES['ENABLE_PAYMENT_FAKE'] = True
+
 # Configure the payment processor to use the fake processing page
 # Since both the fake payment page and the shoppingcart app are using
 # the same settings, we can generate this randomly and guarantee
 # that they are using the same secret.
 from random import choice
-import string
+from string import letters, digits, punctuation  # pylint: disable=deprecated-module
 RANDOM_SHARED_SECRET = ''.join(
-    choice(string.letters + string.digits + string.punctuation)
+    choice(letters + digits + punctuation)
     for x in range(250)
 )
 
-CC_PROCESSOR['CyberSource']['SHARED_SECRET'] = RANDOM_SHARED_SECRET
-CC_PROCESSOR['CyberSource']['MERCHANT_ID'] = "edx"
-CC_PROCESSOR['CyberSource']['SERIAL_NUMBER'] = "0123456789012345678901"
-CC_PROCESSOR['CyberSource']['PURCHASE_ENDPOINT'] = "/shoppingcart/payment_fake"
+CC_PROCESSOR_NAME = 'CyberSource2'
+CC_PROCESSOR['CyberSource2']['SECRET_KEY'] = RANDOM_SHARED_SECRET
+CC_PROCESSOR['CyberSource2']['ACCESS_KEY'] = "0123456789012345678901"
+CC_PROCESSOR['CyberSource2']['PROFILE_ID'] = "edx"
+CC_PROCESSOR['CyberSource2']['PURCHASE_ENDPOINT'] = "/shoppingcart/payment_fake"
+
+FEATURES['STORE_BILLING_INFO'] = True
 
 ########################### SYSADMIN DASHBOARD ################################
 FEATURES['ENABLE_SYSADMIN_DASHBOARD'] = True
@@ -230,13 +298,35 @@ CELERY_ALWAYS_EAGER = True
 CELERY_RESULT_BACKEND = 'cache'
 BROKER_TRANSPORT = 'memory'
 
+######################### MARKETING SITE ###############################
+
+MKTG_URL_LINK_MAP = {
+    'ABOUT': 'about',
+    'CONTACT': 'contact',
+    'FAQ': 'help',
+    'COURSES': 'courses',
+    'ROOT': 'root',
+    'TOS': 'tos',
+    'HONOR': 'honor',
+    'PRIVACY': 'privacy',
+    'JOBS': 'jobs',
+    'NEWS': 'news',
+    'PRESS': 'press',
+    'BLOG': 'blog',
+    'DONATE': 'donate',
+
+    # Verified Certificates
+    'WHAT_IS_VERIFIED_CERT': 'verified-certificate',
+}
+
+
 ############################ STATIC FILES #############################
 DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 MEDIA_ROOT = TEST_ROOT / "uploads"
 MEDIA_URL = "/static/uploads/"
 STATICFILES_DIRS.append(("uploads", MEDIA_ROOT))
 
-new_staticfiles_dirs = []
+_NEW_STATICFILES_DIRS = []
 # Strip out any static files that aren't in the repository root
 # so that the tests can run with only the edx-platform directory checked out
 for static_dir in STATICFILES_DIRS:
@@ -247,8 +337,8 @@ for static_dir in STATICFILES_DIRS:
         data_dir = static_dir
 
     if data_dir.startswith(REPO_ROOT):
-        new_staticfiles_dirs.append(static_dir)
-STATICFILES_DIRS = new_staticfiles_dirs
+        _NEW_STATICFILES_DIRS.append(static_dir)
+STATICFILES_DIRS = _NEW_STATICFILES_DIRS
 
 FILE_UPLOAD_TEMP_DIR = TEST_ROOT / "uploads"
 FILE_UPLOAD_HANDLERS = (
@@ -310,7 +400,13 @@ MICROSITE_CONFIGURATION = {
         "show_homepage_promo_video": False,
         "course_index_overlay_text": "This is a Test Microsite Overlay Text.",
         "course_index_overlay_logo_file": "test_microsite/images/header-logo.png",
-        "homepage_overlay_html": "<h1>This is a Test Microsite Overlay HTML</h1>"
+        "homepage_overlay_html": "<h1>This is a Test Microsite Overlay HTML</h1>",
+        "ALWAYS_REDIRECT_HOMEPAGE_TO_DASHBOARD_FOR_AUTHENTICATED_USER": False,
+        "COURSE_CATALOG_VISIBILITY_PERMISSION": "see_in_catalog",
+        "COURSE_ABOUT_VISIBILITY_PERMISSION": "see_about_page",
+        "ENABLE_SHOPPING_CART": True,
+        "ENABLE_PAID_COURSE_REGISTRATION": True,
+        "SESSION_COOKIE_DOMAIN": "test_microsite.localhost",
     },
     "default": {
         "university": "default_university",
@@ -318,6 +414,8 @@ MICROSITE_CONFIGURATION = {
     }
 }
 MICROSITE_ROOT_DIR = COMMON_ROOT / 'test' / 'test_microsites'
+MICROSITE_TEST_HOSTNAME = 'testmicrosite.testserver'
+
 FEATURES['USE_MICROSITES'] = True
 
 # add extra template directory for test-only templates
@@ -326,15 +424,39 @@ MAKO_TEMPLATES['main'].extend([
 ])
 
 
-######### LinkedIn ########
-LINKEDIN_API['COMPANY_ID'] = '0000000'
-
 # Setting for the testing of Software Secure Result Callback
 VERIFY_STUDENT["SOFTWARE_SECURE"] = {
-        "API_ACCESS_KEY": "BBBBBBBBBBBBBBBBBBBB",
-        "API_SECRET_KEY": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+    "API_ACCESS_KEY": "BBBBBBBBBBBBBBBBBBBB",
+    "API_SECRET_KEY": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
 }
 
 VIDEO_CDN_URL = {
     'CN': 'http://api.xuetangx.com/edx/video?s3_url='
 }
+
+######### dashboard git log settings #########
+MONGODB_LOG = {
+    'host': MONGO_HOST,
+    'port': MONGO_PORT_NUM,
+    'user': '',
+    'password': '',
+    'db': 'xlog',
+}
+
+
+# Enable EdxNotes for tests.
+FEATURES['ENABLE_EDXNOTES'] = True
+
+# Add milestones to Installed apps for testing
+INSTALLED_APPS += ('milestones', )
+
+# MILESTONES
+FEATURES['MILESTONES_APP'] = True
+
+# ENTRANCE EXAMS
+FEATURES['ENTRANCE_EXAMS'] = True
+
+# Enable courseware search for tests
+FEATURES['ENABLE_COURSEWARE_SEARCH'] = True
+# Use MockSearchEngine as the search engine for test scenario
+SEARCH_ENGINE = "search.tests.mock_search_engine.MockSearchEngine"

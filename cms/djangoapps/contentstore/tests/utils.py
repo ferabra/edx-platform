@@ -1,25 +1,27 @@
-# pylint: disable=E1101
+# pylint: disable=no-member
 '''
 Utilities for contentstore tests
 '''
-
 import json
-import re
 
-from django.test.client import Client
+from django.conf import settings
 from django.contrib.auth.models import User
+from django.test.client import Client
+from django.test.utils import override_settings
+from opaque_keys.edx.locations import SlashSeparatedCourseKey, AssetLocation
 
+from contentstore.utils import reverse_url
+from student.models import Registration
+from xmodule.modulestore.split_mongo.split import SplitMongoModuleStore
 from xmodule.contentstore.django import contentstore
-from xmodule.contentstore.content import StaticContent
-from xmodule.modulestore import PublishState, ModuleStoreEnum
-from xmodule.modulestore.django import modulestore
+from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.inheritance import own_metadata
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
+from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.modulestore.xml_importer import import_from_xml
-from student.models import Registration
-from opaque_keys.edx.locations import SlashSeparatedCourseKey, AssetLocation
-from contentstore.utils import reverse_url
+
+TEST_DATA_DIR = settings.COMMON_TEST_DATA_ROOT
 
 
 def parse_json(response):
@@ -65,7 +67,12 @@ class AjaxEnabledTestClient(Client):
         return self.get(path, data or {}, follow, HTTP_ACCEPT="application/json", **extra)
 
 
+@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
 class CourseTestCase(ModuleStoreTestCase):
+    """
+    Base class for Studio tests that require a logged in user and a course.
+    Also provides helper methods for manipulating and verifying the course.
+    """
     def setUp(self):
         """
         These tests need a user in the DB so that the django Test Client can log them in.
@@ -74,16 +81,12 @@ class CourseTestCase(ModuleStoreTestCase):
         will be cleared out before each test case execution and deleted
         afterwards.
         """
-        user_password = super(CourseTestCase, self).setUp()
+        self.user_password = super(CourseTestCase, self).setUp()
 
         self.client = AjaxEnabledTestClient()
-        self.client.login(username=self.user.username, password=user_password)
+        self.client.login(username=self.user.username, password=self.user_password)
 
-        self.course = CourseFactory.create(
-            org='MITx',
-            number='999',
-            display_name='Robot Super Course',
-        )
+        self.course = CourseFactory.create()
 
     def create_non_staff_authed_user_client(self, authenticate=True):
         """
@@ -91,21 +94,29 @@ class CourseTestCase(ModuleStoreTestCase):
         """
         nonstaff, password = self.create_non_staff_user()
 
-        client = Client()
+        client = AjaxEnabledTestClient()
         if authenticate:
             client.login(username=nonstaff.username, password=password)
+            nonstaff.is_authenticated = True
         return client, nonstaff
 
-    def populate_course(self):
+    def populate_course(self, branching=2):
         """
-        Add 2 chapters, 4 sections, 8 verticals, 16 problems to self.course (branching 2)
+        Add k chapters, k^2 sections, k^3 verticals, k^4 problems to self.course (where k = branching)
         """
+        user_id = self.user.id
+        self.populated_usage_keys = {}
+
         def descend(parent, stack):
-            xblock_type = stack.pop(0)
-            for _ in range(2):
-                child = ItemFactory.create(category=xblock_type, parent_location=parent.location)
-                if stack:
-                    descend(child, stack)
+            if not stack:
+                return
+
+            xblock_type = stack[0]
+            for _ in range(branching):
+                child = ItemFactory.create(category=xblock_type, parent_location=parent.location, user_id=user_id)
+                print child.location
+                self.populated_usage_keys.setdefault(xblock_type, []).append(child.location)
+                descend(child, stack[1:])
 
         descend(self.course, ['chapter', 'sequential', 'vertical', 'problem'])
 
@@ -123,9 +134,13 @@ class CourseTestCase(ModuleStoreTestCase):
         self.store.update_item(self.course, self.user.id)
 
     TEST_VERTICAL = 'vertical_test'
+    ORPHAN_DRAFT_VERTICAL = 'orphan_draft_vertical'
+    ORPHAN_DRAFT_HTML = 'orphan_draft_html'
     PRIVATE_VERTICAL = 'a_private_vertical'
     PUBLISHED_VERTICAL = 'a_published_vertical'
     SEQUENTIAL = 'vertical_sequential'
+    DRAFT_HTML = 'draft_html'
+    DRAFT_VIDEO = 'draft_video'
     LOCKED_ASSET_KEY = AssetLocation.from_deprecated_string('/c4x/edX/toy/asset/sample_static.txt')
 
     def import_and_populate_course(self):
@@ -133,7 +148,7 @@ class CourseTestCase(ModuleStoreTestCase):
         Imports the test toy course and populates it with additional test data
         """
         content_store = contentstore()
-        import_from_xml(self.store, self.user.id, 'common/test/data/', ['toy'], static_content_store=content_store)
+        import_from_xml(self.store, self.user.id, TEST_DATA_DIR, ['toy'], static_content_store=content_store)
         course_id = SlashSeparatedCourseKey('edX', 'toy', '2012_Fall')
 
         # create an Orphan
@@ -145,25 +160,51 @@ class CourseTestCase(ModuleStoreTestCase):
         self.assertEqual(orphan_vertical.location.name, 'no_references')
         self.assertEqual(len(orphan_vertical.children), len(vertical.children))
 
+        # create an orphan vertical and html; we already don't try to import
+        # the orphaned vertical, but we should make sure we don't import
+        # the orphaned vertical's child html, too
+        orphan_draft_vertical = self.store.create_item(
+            self.user.id, course_id, 'vertical', self.ORPHAN_DRAFT_VERTICAL
+        )
+        orphan_draft_html = self.store.create_item(
+            self.user.id, course_id, 'html', self.ORPHAN_DRAFT_HTML
+        )
+        orphan_draft_vertical.children.append(orphan_draft_html.location)
+        self.store.update_item(orphan_draft_vertical, self.user.id)
+
         # create a Draft vertical
         vertical = self.store.get_item(course_id.make_usage_key('vertical', self.TEST_VERTICAL), depth=1)
         draft_vertical = self.store.convert_to_draft(vertical.location, self.user.id)
-        self.assertEqual(self.store.compute_publish_state(draft_vertical), PublishState.draft)
+        self.assertTrue(self.store.has_published_version(draft_vertical))
 
         # create a Private (draft only) vertical
-        private_vertical = self.store.create_and_save_xmodule(course_id.make_usage_key('vertical', self.PRIVATE_VERTICAL), self.user.id)
-        self.assertEqual(self.store.compute_publish_state(private_vertical), PublishState.private)
+        private_vertical = self.store.create_item(self.user.id, course_id, 'vertical', self.PRIVATE_VERTICAL)
+        self.assertFalse(self.store.has_published_version(private_vertical))
 
         # create a Published (no draft) vertical
-        public_vertical = self.store.create_and_save_xmodule(course_id.make_usage_key('vertical', self.PUBLISHED_VERTICAL), self.user.id)
+        public_vertical = self.store.create_item(self.user.id, course_id, 'vertical', self.PUBLISHED_VERTICAL)
         public_vertical = self.store.publish(public_vertical.location, self.user.id)
-        self.assertEqual(self.store.compute_publish_state(public_vertical), PublishState.public)
+        self.assertTrue(self.store.has_published_version(public_vertical))
 
         # add the new private and new public as children of the sequential
         sequential = self.store.get_item(course_id.make_usage_key('sequential', self.SEQUENTIAL))
         sequential.children.append(private_vertical.location)
         sequential.children.append(public_vertical.location)
         self.store.update_item(sequential, self.user.id)
+
+        # create an html and video component to make drafts:
+        draft_html = self.store.create_item(self.user.id, course_id, 'html', self.DRAFT_HTML)
+        draft_video = self.store.create_item(self.user.id, course_id, 'video', self.DRAFT_VIDEO)
+
+        # add them as children to the public_vertical
+        public_vertical.children.append(draft_html.location)
+        public_vertical.children.append(draft_video.location)
+        self.store.update_item(public_vertical, self.user.id)
+        # publish changes to vertical
+        self.store.publish(public_vertical.location, self.user.id)
+        # convert html/video to draft
+        self.store.convert_to_draft(draft_html.location, self.user.id)
+        self.store.convert_to_draft(draft_video.location, self.user.id)
 
         # lock an asset
         content_store.set_attr(self.LOCKED_ASSET_KEY, 'locked', True)
@@ -187,42 +228,59 @@ class CourseTestCase(ModuleStoreTestCase):
         """
         items = self.store.get_items(
             course_id,
-            category='vertical',
+            qualifiers={'category': 'vertical'},
             revision=ModuleStoreEnum.RevisionOption.published_only
         )
         self.check_verticals(items)
 
         def verify_item_publish_state(item, publish_state):
             """Verifies the publish state of the item is as expected."""
-            if publish_state in (PublishState.private, PublishState.draft):
-                self.assertTrue(getattr(item, 'is_draft', False))
-            else:
-                self.assertFalse(getattr(item, 'is_draft', False))
-            self.assertEqual(self.store.compute_publish_state(item), publish_state)
+            self.assertEqual(self.store.has_published_version(item), publish_state)
 
         def get_and_verify_publish_state(item_type, item_name, publish_state):
-            """Gets the given item from the store and verifies the publish state of the item is as expected."""
+            """
+            Gets the given item from the store and verifies the publish state
+            of the item is as expected.
+            """
             item = self.store.get_item(course_id.make_usage_key(item_type, item_name))
             verify_item_publish_state(item, publish_state)
             return item
 
-        # verify that the draft vertical is draft
-        vertical = get_and_verify_publish_state('vertical', self.TEST_VERTICAL, PublishState.draft)
+        # verify draft vertical has a published version with published children
+        vertical = get_and_verify_publish_state('vertical', self.TEST_VERTICAL, True)
         for child in vertical.get_children():
-            verify_item_publish_state(child, PublishState.draft)
+            verify_item_publish_state(child, True)
 
-        # make sure that we don't have a sequential that is not in draft mode
-        sequential = get_and_verify_publish_state('sequential', self.SEQUENTIAL, PublishState.public)
+        # verify that it has a draft too
+        self.assertTrue(getattr(vertical, "is_draft", False))
+
+        # make sure that we don't have a sequential that is in draft mode
+        sequential = get_and_verify_publish_state('sequential', self.SEQUENTIAL, True)
+        self.assertFalse(getattr(sequential, "is_draft", False))
 
         # verify that we have the private vertical
-        private_vertical = get_and_verify_publish_state('vertical', self.PRIVATE_VERTICAL, PublishState.private)
+        private_vertical = get_and_verify_publish_state('vertical', self.PRIVATE_VERTICAL, False)
 
         # verify that we have the public vertical
-        public_vertical = get_and_verify_publish_state('vertical', self.PUBLISHED_VERTICAL, PublishState.public)
+        public_vertical = get_and_verify_publish_state('vertical', self.PUBLISHED_VERTICAL, True)
+
+        # verify that we have the draft html
+        draft_html = self.store.get_item(course_id.make_usage_key('html', self.DRAFT_HTML))
+        self.assertTrue(getattr(draft_html, 'is_draft', False))
+
+        # verify that we have the draft video
+        draft_video = self.store.get_item(course_id.make_usage_key('video', self.DRAFT_VIDEO))
+        self.assertTrue(getattr(draft_video, 'is_draft', False))
 
         # verify verticals are children of sequential
         for vert in [vertical, private_vertical, public_vertical]:
             self.assertIn(vert.location, sequential.children)
+
+        # verify draft html is the child of the public vertical
+        self.assertIn(draft_html.location, public_vertical.children)
+
+        # verify draft video is the child of the public vertical
+        self.assertIn(draft_video.location, public_vertical.children)
 
         # verify textbook exists
         course = self.store.get_course(course_id)
@@ -244,18 +302,29 @@ class CourseTestCase(ModuleStoreTestCase):
         course1_items = self.store.get_items(course1_id)
         course2_items = self.store.get_items(course2_id)
         self.assertGreater(len(course1_items), 0)  # ensure it found content instead of [] == []
-        self.assertEqual(len(course1_items), len(course2_items))
+        if len(course1_items) != len(course2_items):
+            course1_block_ids = set([item.location.block_id for item in course1_items])
+            course2_block_ids = set([item.location.block_id for item in course2_items])
+            raise AssertionError(
+                u"Course1 extra blocks: {}; course2 extra blocks: {}".format(
+                    course1_block_ids - course2_block_ids, course2_block_ids - course1_block_ids
+                )
+            )
 
         for course1_item in course1_items:
-            course2_item_location = course1_item.location.map_into_course(course2_id)
-            if course1_item.location.category == 'course':
-                course2_item_location = course2_item_location.replace(name=course2_item_location.run)
-            course2_item = self.store.get_item(course2_item_location)
+            course1_item_loc = course1_item.location
+            course2_item_loc = course2_id.make_usage_key(course1_item_loc.block_type, course1_item_loc.block_id)
+            if course1_item_loc.block_type == 'course':
+                # mongo uses the run as the name, split uses 'course'
+                store = self.store._get_modulestore_for_courselike(course2_id)  # pylint: disable=protected-access
+                new_name = 'course' if isinstance(store, SplitMongoModuleStore) else course2_item_loc.run
+                course2_item_loc = course2_item_loc.replace(name=new_name)
+            course2_item = self.store.get_item(course2_item_loc)
 
             # compare published state
             self.assertEqual(
-                self.store.compute_publish_state(course1_item),
-                self.store.compute_publish_state(course2_item)
+                self.store.has_published_version(course1_item),
+                self.store.has_published_version(course2_item)
             )
 
             # compare data
@@ -272,38 +341,37 @@ class CourseTestCase(ModuleStoreTestCase):
                 expected_children = []
                 for course1_item_child in course1_item.children:
                     expected_children.append(
-                        course1_item_child.map_into_course(course2_id)
+                        course2_id.make_usage_key(course1_item_child.block_type, course1_item_child.block_id)
                     )
                 self.assertEqual(expected_children, course2_item.children)
 
         # compare assets
-        content_store = contentstore()
+        content_store = self.store.contentstore
         course1_assets, count_course1_assets = content_store.get_all_content_for_course(course1_id)
         _, count_course2_assets = content_store.get_all_content_for_course(course2_id)
         self.assertEqual(count_course1_assets, count_course2_assets)
         for asset in course1_assets:
-            asset_id = asset.get('content_son', asset['_id'])
-            asset_key = StaticContent.compute_location(course1_id, asset_id['name'])
-            self.assertAssetsEqual(asset_key, course1_id, course2_id)
+            asset_son = asset.get('content_son', asset['_id'])
+            self.assertAssetsEqual(asset_son, course1_id, course2_id)
 
     def check_verticals(self, items):
         """ Test getting the editing HTML for each vertical. """
         # assert is here to make sure that the course being tested actually has verticals (units) to check.
         self.assertGreater(len(items), 0, "Course has no verticals (units) to check")
         for descriptor in items:
-            resp = self.client.get_html(get_url('unit_handler', descriptor.location))
+            resp = self.client.get_html(get_url('container_handler', descriptor.location))
             self.assertEqual(resp.status_code, 200)
 
-    def assertAssetsEqual(self, asset_key, course1_id, course2_id):
+    def assertAssetsEqual(self, asset_son, course1_id, course2_id):
         """Verifies the asset of the given key has the same attributes in both given courses."""
         content_store = contentstore()
-        course1_asset_attrs = content_store.get_attrs(asset_key.map_into_course(course1_id))
-        course2_asset_attrs = content_store.get_attrs(asset_key.map_into_course(course2_id))
+        category = asset_son.block_type if hasattr(asset_son, 'block_type') else asset_son['category']
+        filename = asset_son.block_id if hasattr(asset_son, 'block_id') else asset_son['name']
+        course1_asset_attrs = content_store.get_attrs(course1_id.make_asset_key(category, filename))
+        course2_asset_attrs = content_store.get_attrs(course2_id.make_asset_key(category, filename))
         self.assertEqual(len(course1_asset_attrs), len(course2_asset_attrs))
         for key, value in course1_asset_attrs.iteritems():
-            if key == '_id':
-                self.assertEqual(value['name'], course2_asset_attrs[key]['name'])
-            elif key == 'filename' or key == 'uploadDate' or key == 'content_son' or key == 'thumbnail_location':
+            if key in ['_id', 'filename', 'uploadDate', 'content_son', 'thumbnail_location']:
                 pass
             else:
                 self.assertEqual(value, course2_asset_attrs[key])

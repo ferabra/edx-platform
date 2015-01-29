@@ -1,10 +1,34 @@
+"""
+Each store has slightly different semantics wrt draft v published. XML doesn't officially recognize draft
+but does hold it in a subdir. Old mongo has a virtual but not physical draft for every unit in published state.
+Split mongo has a physical for every unit in every state.
+
+Given that, here's a table of semantics and behaviors where - means no record and letters indicate values.
+For xml, (-, x) means the item is published and can be edited. For split, it means the item's
+been deleted from draft and will be deleted from published the next time it gets published. old mongo
+can't represent that virtual state (2nd row in table)
+
+In the table body, the tuples represent virtual modulestore result. The row headers represent the pre-import
+modulestore state.
+
+Modulestore virtual   |          XML physical (draft, published)
+(draft, published)    |  (-, -) | (x, -) | (x, x) | (x, y) | (-, x)
+----------------------+--------------------------------------------
+             (-, -)   |  (-, -) | (x, -) | (x, x) | (x, y) | (-, x)
+             (-, a)   |  (-, a) | (x, a) | (x, x) | (x, y) | (-, x) : deleted from draft before import
+             (a, -)   |  (a, -) | (x, -) | (x, x) | (x, y) | (a, x)
+             (a, a)   |  (a, a) | (x, a) | (x, x) | (x, y) | (a, x)
+             (a, b)   |  (a, b) | (x, b) | (x, x) | (x, y) | (a, x)
+"""
 import logging
 import os
 import mimetypes
 from path import path
 import json
+import re
+from lxml import etree
 
-from .xml import XMLModuleStore, ImportSystem, ParentTracker
+from .xml import XMLModuleStore, ImportSystem
 from xblock.runtime import KvsFieldData, DictKeyValueStore
 from xmodule.x_module import XModuleDescriptor
 from opaque_keys.edx.keys import UsageKey
@@ -15,9 +39,13 @@ from xmodule.errortracker import make_error_tracker
 from .store_utilities import rewrite_nonportable_content_links
 import xblock
 from xmodule.tabs import CourseTabList
-from xmodule.modulestore.exceptions import InvalidLocationError
+from xmodule.assetstore import AssetMetadata
+from xmodule.modulestore.django import ASSET_IGNORE_REGEX
+from xmodule.modulestore.exceptions import DuplicateCourseError
 from xmodule.modulestore.mongo.base import MongoRevisionKey
 from xmodule.modulestore import ModuleStoreEnum
+from xmodule.modulestore.store_utilities import draft_node_constructor, get_draft_subtree_roots
+
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +77,7 @@ def import_static_content(
 
             content_path = os.path.join(dirname, filename)
 
-            if filename.endswith('~'):
+            if re.match(ASSET_IGNORE_REGEX, filename):
                 if verbose:
                     log.debug('skipping static content %s...', content_path)
                 continue
@@ -113,31 +141,39 @@ def import_from_xml(
         default_class='xmodule.raw_module.RawDescriptor',
         load_error_modules=True, static_content_store=None,
         target_course_id=None, verbose=False,
-        do_import_static=True, create_new_course_if_not_present=False):
+        do_import_static=True, create_course_if_not_present=False,
+        raise_on_failure=False):
     """
-    Import the specified xml data_dir into the "store" modulestore,
-    using org and course as the location org and course.
+    Import xml-based courses from data_dir into modulestore.
 
-    course_dirs: If specified, the list of course_dirs to load. Otherwise, load
-    all course dirs
+    Returns:
+        list of new course objects
 
-    target_course_id is the CourseKey that all modules should be remapped to
-    after import off disk. We do this remapping as a post-processing step
-    because there's logic in the importing which expects a 'url_name' as an
-    identifier to where things are on disk
-    e.g. ../policies/<url_name>/policy.json as well as metadata keys in
-    the policy.json. so we need to keep the original url_name during import
+    Args:
+        store: a modulestore implementing ModuleStoreWriteBase in which to store the imported courses.
 
-    :param do_import_static:
-        if False, then static files are not imported into the static content
-        store. This can be employed for courses which have substantial
-        unchanging static content, which is to inefficient to import every
-        time the course is loaded. Static content for some courses may also be
-        served directly by nginx, instead of going through django.
+        data_dir: the root directory from which to find the xml courses.
 
-    : create_new_course_if_not_present:
-        If True, then a new course is created if it doesn't already exist.
-        The check for existing courses is case-insensitive.
+        course_dirs: If specified, the list of data_dir subdirectories to load. Otherwise, load
+            all course dirs
+
+        target_course_id: is the CourseKey that all modules should be remapped to
+            after import off disk. NOTE: this only makes sense if importing only
+            one course. If there are more than one course loaded from data_dir/course_dirs & you
+            supply this id, this method will raise an AssertException.
+
+        static_content_store: the static asset store
+
+        do_import_static: if True, then import the course's static files into static_content_store
+            This can be employed for courses which have substantial
+            unchanging static content, which is too inefficient to import every
+            time the course is loaded. Static content for some courses may also be
+            served directly by nginx, instead of going through django.
+
+        create_course_if_not_present: If True, then a new course is created if it doesn't already exist.
+            Otherwise, it throws an InvalidLocationError if the course does not exist.
+
+        default_class, load_error_modules: are arguments for constructing the XMLModuleStore (see its doc)
     """
 
     xml_module_store = XMLModuleStore(
@@ -151,155 +187,88 @@ def import_from_xml(
 
     # If we're going to remap the course_id, then we can only do that with
     # a single course
-
     if target_course_id:
         assert(len(xml_module_store.modules) == 1)
 
-    # NOTE: the XmlModuleStore does not implement get_items()
-    # which would be a preferable means to enumerate the entire collection
-    # of course modules. It will be left as a TBD to implement that
-    # method on XmlModuleStore.
-    course_items = []
+    new_courses = []
+    for course_key in xml_module_store.modules.keys():
+        if target_course_id is not None:
+            dest_course_id = target_course_id
+        else:
+            dest_course_id = store.make_course_key(course_key.org, course_key.course, course_key.run)
 
-    with store.branch_setting(ModuleStoreEnum.Branch.draft_preferred):
-        for course_key in xml_module_store.modules.keys():
+        runtime = None
+        # Creates a new course if it doesn't already exist
+        if create_course_if_not_present and not store.has_course(dest_course_id, ignore_case=True):
+            try:
+                new_course = store.create_course(dest_course_id.org, dest_course_id.course, dest_course_id.run, user_id)
+                runtime = new_course.runtime
+            except DuplicateCourseError:
+                # course w/ same org and course exists
+                log.debug(
+                    "Skipping import of course with id, %s,"
+                    "since it collides with an existing one", dest_course_id
+                )
+                continue
 
-            if target_course_id is not None:
-                dest_course_id = target_course_id
-            else:
-                dest_course_id = course_key
+        with store.bulk_operations(dest_course_id):
+            source_course = xml_module_store.get_course(course_key)
+            # STEP 1: find and import course module
+            course, course_data_path = _import_course_module(
+                store, runtime, user_id,
+                data_dir, course_key, dest_course_id, source_course,
+                do_import_static, verbose
+            )
+            new_courses.append(course)
 
-            # Creates a new course if it doesn't already exist
-            if create_new_course_if_not_present and not store.has_course(dest_course_id, ignore_case=True):
-                try:
-                    store.create_course(dest_course_id.org, dest_course_id.course, dest_course_id.run, user_id)
-                except InvalidLocationError:
-                    # course w/ same org and course exists
-                    log.debug(
-                        "Skipping import of course with id, {0},"
-                        "since it collides with an existing one".format(dest_course_id)
-                    )
-                    continue
+            # STEP 2: import static content
+            _import_static_content_wrapper(
+                static_content_store, do_import_static, course_data_path, dest_course_id, verbose
+            )
 
-            with store.bulk_write_operations(dest_course_id):
-                course_data_path = None
+            # Import asset metadata stored in XML.
+            _import_course_asset_metadata(store, course_data_path, dest_course_id, raise_on_failure)
 
-                if verbose:
-                    log.debug("Scanning {0} for course module...".format(course_key))
+            # STEP 3: import PUBLISHED items
+            # now loop through all the modules depth first and then orphans
+            with store.branch_setting(ModuleStoreEnum.Branch.published_only, dest_course_id):
+                all_locs = set(xml_module_store.modules[course_key].keys())
+                all_locs.remove(source_course.location)
 
-                # Quick scan to get course module as we need some info from there.
-                # Also we need to make sure that the course module is committed
-                # first into the store
-                for module in xml_module_store.modules[course_key].itervalues():
-                    if module.scope_ids.block_type == 'course':
-                        course_data_path = path(data_dir) / module.data_dir
+                def depth_first(subtree):
+                    """
+                    Import top down just so import code can make assumptions about parents always being available
+                    """
+                    if subtree.has_children:
+                        for child in subtree.get_children():
+                            try:
+                                all_locs.remove(child.location)
+                            except KeyError:
+                                # tolerate same child occurring under 2 parents such as in
+                                # ContentStoreTest.test_image_import
+                                pass
+                            if verbose:
+                                log.debug('importing module location {loc}'.format(loc=child.location))
 
-                        log.debug(u'======> IMPORTING course {course_key}'.format(
-                            course_key=course_key,
-                        ))
-
-                        if not do_import_static:
-                            # for old-style xblock where this was actually linked to kvs
-                            module.static_asset_path = module.data_dir
-                            module.save()
-                            log.debug('course static_asset_path={path}'.format(
-                                path=module.static_asset_path
-                            ))
-
-                        log.debug('course data_dir={0}'.format(module.data_dir))
-
-                        course = _import_module_and_update_references(
-                            module, store, user_id,
-                            course_key,
-                            dest_course_id,
-                            do_import_static=do_import_static
-                        )
-
-                        for entry in course.pdf_textbooks:
-                            for chapter in entry.get('chapters', []):
-                                if StaticContent.is_c4x_path(chapter.get('url', '')):
-                                    asset_key = StaticContent.get_location_from_path(chapter['url'])
-                                    chapter['url'] = StaticContent.get_static_path_from_location(asset_key)
-
-                        # Original wiki_slugs had value location.course. To make them unique this was changed to 'org.course.name'.
-                        # If we are importing into a course with a different course_id and wiki_slug is equal to either of these default
-                        # values then remap it so that the wiki does not point to the old wiki.
-                        if course_key != course.id:
-                            original_unique_wiki_slug = u'{0}.{1}.{2}'.format(
-                                course_key.org,
-                                course_key.course,
-                                course_key.run
+                            _import_module_and_update_references(
+                                child,
+                                store,
+                                user_id,
+                                course_key,
+                                dest_course_id,
+                                do_import_static=do_import_static,
+                                runtime=course.runtime
                             )
-                            if course.wiki_slug == original_unique_wiki_slug or course.wiki_slug == course_key.course:
-                                course.wiki_slug = u'{0}.{1}.{2}'.format(
-                                    course.id.org,
-                                    course.id.course,
-                                    course.id.run,
-                                )
+                            depth_first(child)
 
-                        # cdodge: more hacks (what else). Seems like we have a
-                        # problem when importing a course (like 6.002) which
-                        # does not have any tabs defined in the policy file.
-                        # The import goes fine and then displays fine in LMS,
-                        # but if someone tries to add a new tab in the CMS, then
-                        # the LMS barfs because it expects that -- if there are
-                        # *any* tabs -- then there at least needs to be
-                        # some predefined ones
-                        if course.tabs is None or len(course.tabs) == 0:
-                            CourseTabList.initialize_default(course)
+                depth_first(source_course)
 
-                        store.update_item(course, user_id)
-
-                        course_items.append(course)
-                        break
-
-                # TODO: shouldn't this raise an exception if course wasn't found?
-
-                # then import all the static content
-                if static_content_store is not None and do_import_static:
-                    # first pass to find everything in /static/
-                    import_static_content(
-                        course_data_path, static_content_store,
-                        dest_course_id, subpath='static', verbose=verbose
-                    )
-
-                elif verbose and not do_import_static:
-                    log.debug(
-                        "Skipping import of static content, "
-                        "since do_import_static={0}".format(do_import_static)
-                    )
-
-                # no matter what do_import_static is, import "static_import" directory
-
-                # This is needed because the "about" pages (eg "overview") are
-                # loaded via load_extra_content, and do not inherit the lms
-                # metadata from the course module, and thus do not get
-                # "static_content_store" properly defined. Static content
-                # referenced in those extra pages thus need to come through the
-                # c4x:// contentstore, unfortunately. Tell users to copy that
-                # content into the "static_import" subdir.
-
-                simport = 'static_import'
-                if os.path.exists(course_data_path / simport):
-                    import_static_content(
-                        course_data_path, static_content_store,
-                        dest_course_id, subpath=simport, verbose=verbose
-                    )
-
-                # now loop through all the modules
-                for module in xml_module_store.modules[course_key].itervalues():
-                    if module.scope_ids.block_type == 'course':
-                        # we've already saved the course module up at the top
-                        # of the loop so just skip over it in the inner loop
-                        continue
-
+                for leftover in all_locs:
                     if verbose:
-                        log.debug('importing module location {loc}'.format(
-                            loc=module.location
-                        ))
+                        log.debug('importing module location {loc}'.format(loc=leftover))
 
                     _import_module_and_update_references(
-                        module, store,
+                        xml_module_store.get_item(leftover), store,
                         user_id,
                         course_key,
                         dest_course_id,
@@ -307,10 +276,8 @@ def import_from_xml(
                         runtime=course.runtime
                     )
 
-                # finally, publish the course
-                store.publish(course.location, user_id)
-
-                # now import any DRAFT items
+            # STEP 4: import any DRAFT items
+            with store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, dest_course_id):
                 _import_course_draft(
                     xml_module_store,
                     store,
@@ -321,7 +288,163 @@ def import_from_xml(
                     course.runtime
                 )
 
-    return xml_module_store, course_items
+    return new_courses
+
+
+def _import_course_asset_metadata(store, data_dir, course_id, raise_on_failure):
+    """
+    Read in assets XML file, parse it, and add all asset metadata to the modulestore.
+    """
+    asset_dir = path(data_dir) / AssetMetadata.EXPORTED_ASSET_DIR
+    assets_filename = AssetMetadata.EXPORTED_ASSET_FILENAME
+    asset_xml_file = asset_dir / assets_filename
+
+    def make_asset_id(course_id, asset_xml):
+        """
+        Construct an asset ID out of a complete asset XML section.
+        """
+        asset_type = None
+        asset_name = None
+        for child in asset_xml.iterchildren():
+            if child.tag == AssetMetadata.ASSET_TYPE_ATTR:
+                asset_type = child.text
+            elif child.tag == AssetMetadata.ASSET_BASENAME_ATTR:
+                asset_name = child.text
+        return course_id.make_asset_key(asset_type, asset_name)
+
+    all_assets = []
+    try:
+        xml_data = etree.parse(asset_xml_file).getroot()
+        assert(xml_data.tag == AssetMetadata.ALL_ASSETS_XML_TAG)
+        for asset in xml_data.iterchildren():
+            if asset.tag == AssetMetadata.ASSET_XML_TAG:
+                # Construct the asset key.
+                asset_key = make_asset_id(course_id, asset)
+                asset_md = AssetMetadata(asset_key)
+                asset_md.from_xml(asset)
+                all_assets.append(asset_md)
+    except IOError:
+        logging.info('No {} file is present with asset metadata.'.format(assets_filename))
+        return
+    except Exception:  # pylint: disable=W0703
+        logging.exception('Error while parsing asset xml.')
+        if raise_on_failure:
+            raise
+        else:
+            return
+
+    # Now add all asset metadata to the modulestore.
+    if len(all_assets) > 0:
+        store.save_asset_metadata_list(all_assets, all_assets[0].edited_by, import_only=True)
+
+
+def _import_course_module(
+        store, runtime, user_id, data_dir, course_key, dest_course_id, source_course, do_import_static,
+        verbose,
+):
+    """
+    Import a course module.
+    """
+    if verbose:
+        log.debug("Scanning {0} for course module...".format(course_key))
+
+    # Quick scan to get course module as we need some info from there.
+    # Also we need to make sure that the course module is committed
+    # first into the store
+    course_data_path = path(data_dir) / source_course.data_dir
+
+    log.debug(u'======> IMPORTING course {course_key}'.format(
+        course_key=course_key,
+    ))
+
+    if not do_import_static:
+        # for old-style xblock where this was actually linked to kvs
+        source_course.static_asset_path = source_course.data_dir
+        source_course.save()
+        log.debug('course static_asset_path={path}'.format(
+            path=source_course.static_asset_path
+        ))
+
+    log.debug('course data_dir={0}'.format(source_course.data_dir))
+
+    with store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, dest_course_id):
+
+        course = _import_module_and_update_references(
+            source_course, store, user_id,
+            course_key,
+            dest_course_id,
+            do_import_static=do_import_static,
+            runtime=runtime,
+        )
+
+        for entry in course.pdf_textbooks:
+            for chapter in entry.get('chapters', []):
+                if StaticContent.is_c4x_path(chapter.get('url', '')):
+                    asset_key = StaticContent.get_location_from_path(chapter['url'])
+                    chapter['url'] = StaticContent.get_static_path_from_location(asset_key)
+
+        # Original wiki_slugs had value location.course. To make them unique this was changed to 'org.course.name'.
+        # If we are importing into a course with a different course_id and wiki_slug is equal to either of these default
+        # values then remap it so that the wiki does not point to the old wiki.
+        if course_key != course.id:
+            original_unique_wiki_slug = u'{0}.{1}.{2}'.format(
+                course_key.org,
+                course_key.course,
+                course_key.run
+            )
+            if course.wiki_slug == original_unique_wiki_slug or course.wiki_slug == course_key.course:
+                course.wiki_slug = u'{0}.{1}.{2}'.format(
+                    course.id.org,
+                    course.id.course,
+                    course.id.run,
+                )
+
+        # cdodge: more hacks (what else). Seems like we have a
+        # problem when importing a course (like 6.002) which
+        # does not have any tabs defined in the policy file.
+        # The import goes fine and then displays fine in LMS,
+        # but if someone tries to add a new tab in the CMS, then
+        # the LMS barfs because it expects that -- if there are
+        # *any* tabs -- then there at least needs to be
+        # some predefined ones
+        if course.tabs is None or len(course.tabs) == 0:
+            CourseTabList.initialize_default(course)
+
+        store.update_item(course, user_id)
+    return course, course_data_path
+
+
+def _import_static_content_wrapper(static_content_store, do_import_static, course_data_path, dest_course_id, verbose):
+    # then import all the static content
+    if static_content_store is not None and do_import_static:
+        # first pass to find everything in /static/
+        import_static_content(
+            course_data_path, static_content_store,
+            dest_course_id, subpath='static', verbose=verbose
+        )
+
+    elif verbose and not do_import_static:
+        log.debug(
+            "Skipping import of static content, "
+            "since do_import_static={0}".format(do_import_static)
+        )
+
+    # no matter what do_import_static is, import "static_import" directory
+
+    # This is needed because the "about" pages (eg "overview") are
+    # loaded via load_extra_content, and do not inherit the lms
+    # metadata from the course module, and thus do not get
+    # "static_content_store" properly defined. Static content
+    # referenced in those extra pages thus need to come through the
+    # c4x:// contentstore, unfortunately. Tell users to copy that
+    # content into the "static_import" subdir.
+
+    simport = 'static_import'
+    if os.path.exists(course_data_path / simport):
+        import_static_content(
+            course_data_path, static_content_store,
+            dest_course_id, subpath=simport, verbose=verbose
+        )
 
 
 def _import_module_and_update_references(
@@ -341,11 +464,6 @@ def _import_module_and_update_references(
         )
 
     # Move the module to a new course
-    new_usage_key = module.scope_ids.usage_id.map_into_course(dest_course_id)
-    if new_usage_key.category == 'course':
-        new_usage_key = new_usage_key.replace(name=dest_course_id.run)
-    new_module = store.create_xmodule(new_usage_key, runtime=runtime)
-
     def _convert_reference_fields_to_new_namespace(reference):
         """
         Convert a reference to the new namespace, but only
@@ -359,37 +477,41 @@ def _import_module_and_update_references(
         else:
             return reference
 
+    fields = {}
     for field_name, field in module.fields.iteritems():
-        if field.is_set_on(module):
+        if field.scope != Scope.parent and field.is_set_on(module):
             if isinstance(field, Reference):
-                new_ref = _convert_reference_fields_to_new_namespace(getattr(module, field_name))
-                setattr(new_module, field_name, new_ref)
+                value = field.read_from(module)
+                if value is None:
+                    fields[field_name] = None
+                else:
+                    fields[field_name] = _convert_reference_fields_to_new_namespace(field.read_from(module))
             elif isinstance(field, ReferenceList):
-                references = getattr(module, field_name)
-                new_references = [_convert_reference_fields_to_new_namespace(reference) for reference in references]
-                setattr(new_module, field_name, new_references)
+                references = field.read_from(module)
+                fields[field_name] = [_convert_reference_fields_to_new_namespace(reference) for reference in references]
             elif isinstance(field, ReferenceValueDict):
-                reference_dict = getattr(module, field_name)
-                new_reference_dict = {
+                reference_dict = field.read_from(module)
+                fields[field_name] = {
                     key: _convert_reference_fields_to_new_namespace(reference)
                     for key, reference
-                    in reference_dict.items()
+                    in reference_dict.iteritems()
                 }
-                setattr(new_module, field_name, new_reference_dict)
             elif field_name == 'xml_attributes':
-                value = getattr(module, field_name)
+                value = field.read_from(module)
                 # remove any export/import only xml_attributes
                 # which are used to wire together draft imports
+                if 'parent_url' in value:
+                    del value['parent_url']
                 if 'parent_sequential_url' in value:
                     del value['parent_sequential_url']
 
                 if 'index_in_children_list' in value:
                     del value['index_in_children_list']
-                setattr(new_module, field_name, value)
+                fields[field_name] = value
             else:
-                setattr(new_module, field_name, getattr(module, field_name))
-    store.update_item(new_module, user_id, allow_not_found=True)
-    return new_module
+                fields[field_name] = field.read_from(module)
+
+    return store.import_xblock(user_id, dest_course_id, module.location.category, module.location.block_id, fields, runtime)
 
 
 def _import_course_draft(
@@ -425,22 +547,59 @@ def _import_course_draft(
     draft_course_dir = draft_dir.replace(data_dir, '', 1)
     system = ImportSystem(
         xmlstore=xml_module_store,
-        course_id=target_course_id,
+        course_id=source_course_id,
         course_dir=draft_course_dir,
         error_tracker=errorlog.tracker,
-        parent_tracker=ParentTracker(),
         load_error_modules=False,
         mixins=xml_module_store.xblock_mixins,
         field_data=KvsFieldData(kvs=DictKeyValueStore()),
     )
 
-    # now walk the /vertical directory where each file in there
-    # will be a draft copy of the Vertical
+    def _import_module(module):
+        # IMPORTANT: Be sure to update the module location in the NEW namespace
+        module_location = module.location.map_into_course(target_course_id)
+        # Update the module's location to DRAFT revision
+        # We need to call this method (instead of updating the location directly)
+        # to ensure that pure XBlock field data is updated correctly.
+        _update_module_location(module, module_location.replace(revision=MongoRevisionKey.draft))
 
-    # First it is necessary to order the draft items by their desired index in the child list
-    # (order os.walk returns them in is not guaranteed).
-    drafts = dict()
-    for dirname, _dirnames, filenames in os.walk(draft_dir + "/vertical"):
+        parent_url = get_parent_url(module)
+        index = index_in_children_list(module)
+
+        # make sure our parent has us in its list of children
+        # this is to make sure private only modules show up
+        # in the list of children since they would have been
+        # filtered out from the non-draft store export.
+        if parent_url is not None and index is not None:
+            course_key = descriptor.location.course_key
+            parent_location = course_key.make_usage_key_from_deprecated_string(parent_url)
+
+            # IMPORTANT: Be sure to update the parent in the NEW namespace
+            parent_location = parent_location.map_into_course(target_course_id)
+
+            parent = store.get_item(parent_location, depth=0)
+
+            non_draft_location = module.location.map_into_course(target_course_id)
+            if not any(child.block_id == module.location.block_id for child in parent.children):
+                parent.children.insert(index, non_draft_location)
+                store.update_item(parent, user_id)
+
+        _import_module_and_update_references(
+            module, store, user_id,
+            source_course_id,
+            target_course_id,
+            runtime=mongo_runtime,
+        )
+        for child in module.get_children():
+            _import_module(child)
+
+    # Now walk the /vertical directory.
+    # Each file in the directory will be a draft copy of the vertical.
+
+    # First it is necessary to order the draft items by their desired index in the child list,
+    # since the order in which os.walk() returns the files is not guaranteed.
+    drafts = []
+    for dirname, _dirnames, filenames in os.walk(draft_dir):
         for filename in filenames:
             module_path = os.path.join(dirname, filename)
             with open(module_path, 'r') as f:
@@ -479,69 +638,43 @@ def _import_course_draft(
                         # Not a 'hidden file', then re-raise exception
                         raise err
 
-                    descriptor = system.process_xml(xml)
+                    # process_xml call below recursively processes all descendants. If
+                    # we call this on all verticals in a course with verticals nested below
+                    # the unit level, we try to import the same content twice, causing naming conflicts.
+                    # Therefore only process verticals at the unit level, assuming that any other
+                    # verticals must be descendants.
+                    if 'index_in_children_list' in xml:
+                        descriptor = system.process_xml(xml)
 
-                    # HACK: since we are doing partial imports of drafts
-                    # the vertical doesn't have the 'url-name' set in the
-                    # attributes (they are normally in the parent object,
-                    # aka sequential), so we have to replace the location.name
-                    # with the XML filename that is part of the pack
-                    fn, fileExtension = os.path.splitext(filename)
-                    descriptor.location = descriptor.location.replace(name=fn)
+                        # HACK: since we are doing partial imports of drafts
+                        # the vertical doesn't have the 'url-name' set in the
+                        # attributes (they are normally in the parent object,
+                        # aka sequential), so we have to replace the location.name
+                        # with the XML filename that is part of the pack
+                        filename, __ = os.path.splitext(filename)
+                        descriptor.location = descriptor.location.replace(name=filename)
 
-                    index = int(descriptor.xml_attributes['index_in_children_list'])
-                    if index in drafts:
-                        drafts[index].append(descriptor)
-                    else:
-                        drafts[index] = [descriptor]
+                        index = index_in_children_list(descriptor)
+                        parent_url = get_parent_url(descriptor, xml)
+                        draft_url = descriptor.location.to_deprecated_string()
 
-                except Exception:
+                        draft = draft_node_constructor(
+                            module=descriptor, url=draft_url, parent_url=parent_url, index=index
+                        )
+
+                        drafts.append(draft)
+
+                except Exception:  # pylint: disable=broad-except
                     logging.exception('Error while parsing course xml.')
 
-        # For each index_in_children_list key, there is a list of vertical descriptors.
-        for key in sorted(drafts.iterkeys()):
-            for descriptor in drafts[key]:
-                course_key = descriptor.location.course_key
-                try:
-                    def _import_module(module):
-                        # Update the module's location to DRAFT revision
-                        # We need to call this method (instead of updating the location directly)
-                        # to ensure that pure XBlock field data is updated correctly.
-                        _update_module_location(module, module.location.replace(revision=MongoRevisionKey.draft))
+    # sort drafts by `index_in_children_list` attribute
+    drafts.sort(key=lambda x: x.index)
 
-                        # make sure our parent has us in its list of children
-                        # this is to make sure private only verticals show up
-                        # in the list of children since they would have been
-                        # filtered out from the non-draft store export
-                        if module.location.category == 'vertical':
-                            non_draft_location = module.location.replace(revision=MongoRevisionKey.published)
-                            sequential_url = module.xml_attributes['parent_sequential_url']
-                            index = int(module.xml_attributes['index_in_children_list'])
-
-                            seq_location = course_key.make_usage_key_from_deprecated_string(sequential_url)
-
-                            # IMPORTANT: Be sure to update the sequential
-                            # in the NEW namespace
-                            seq_location = seq_location.map_into_course(target_course_id)
-                            sequential = store.get_item(seq_location, depth=0)
-
-                            if non_draft_location not in sequential.children:
-                                sequential.children.insert(index, non_draft_location)
-                                store.update_item(sequential, user_id)
-
-                        _import_module_and_update_references(
-                            module, store, user_id,
-                            source_course_id,
-                            target_course_id,
-                            runtime=mongo_runtime,
-                        )
-                        for child in module.get_children():
-                            _import_module(child)
-
-                    _import_module(descriptor)
-
-                except Exception:
-                    logging.exception('There while importing draft descriptor %s', descriptor)
+    for draft in get_draft_subtree_roots(drafts):
+        try:
+            _import_module(draft.module)
+        except Exception:  # pylint: disable=broad-except
+            logging.exception('while importing draft descriptor %s', draft.module)
 
 
 def allowed_metadata_by_category(category):
@@ -578,6 +711,56 @@ def check_module_metadata_editability(module):
         )
 
     return err_cnt
+
+
+def get_parent_url(module, xml=None):
+    """
+    Get the parent_url, if any, from module using xml as an alternative source. If it finds it in
+    xml but not on module, it modifies module so that the next call to this w/o the xml will get the parent url
+    """
+    if hasattr(module, 'xml_attributes'):
+        return module.xml_attributes.get(
+            # handle deprecated old attr
+            'parent_url', module.xml_attributes.get('parent_sequential_url')
+        )
+    if xml is not None:
+        create_xml_attributes(module, xml)
+        return get_parent_url(module)  # don't reparse xml b/c don't infinite recurse but retry above lines
+    return None
+
+
+def index_in_children_list(module, xml=None):
+    """
+    Get the index_in_children_list, if any, from module using xml
+    as an alternative source. If it finds it in xml but not on module,
+    it modifies module so that the next call to this w/o the xml
+    will get the field.
+    """
+    if hasattr(module, 'xml_attributes'):
+        val = module.xml_attributes.get('index_in_children_list')
+        if val is not None:
+            return int(val)
+        return None
+    if xml is not None:
+        create_xml_attributes(module, xml)
+        return index_in_children_list(module)  # don't reparse xml b/c don't infinite recurse but retry above lines
+    return None
+
+
+def create_xml_attributes(module, xml):
+    """
+    Make up for modules which don't define xml_attributes by creating them here and populating
+    """
+    xml_attrs = {}
+    for attr, val in xml.attrib.iteritems():
+        if attr not in module.fields:
+            # translate obsolete attr
+            if attr == 'parent_sequential_url':
+                attr = 'parent_url'
+            xml_attrs[attr] = val
+
+    # now cache it on module where it's expected
+    setattr(module, 'xml_attributes', xml_attrs)
 
 
 def validate_no_non_editable_metadata(module_store, course_id, category):

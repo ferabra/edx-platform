@@ -2,6 +2,7 @@ from xmodule.modulestore.django import modulestore
 from xmodule.course_module import CourseDescriptor
 from django.conf import settings
 
+from opaque_keys.edx.locations import SlashSeparatedCourseKey
 from microsite_configuration import microsite
 
 
@@ -22,7 +23,7 @@ def get_visible_courses():
 
     # this is legacy format which is outside of the microsite feature -- also handle dev case, which should not filter
     if hasattr(settings, 'COURSE_LISTINGS') and subdomain in settings.COURSE_LISTINGS and not settings.DEBUG:
-        filtered_visible_ids = frozenset(settings.COURSE_LISTINGS[subdomain])
+        filtered_visible_ids = frozenset([SlashSeparatedCourseKey.from_deprecated_string(c) for c in settings.COURSE_LISTINGS[subdomain]])
 
     filtered_by_org = microsite.get_value('course_org_filter')
 
@@ -62,11 +63,15 @@ def get_logo_url():
     # otherwise, use the legacy means to configure this
     university = microsite.get_value('university')
 
-    if university is None:
-        return '{static_url}images/header-logo.png'.format(
+    if university is None and settings.FEATURES.get('IS_EDX_DOMAIN', False):
+        return '{static_url}images/edx-theme/edx-logo-77x36.png'.format(
             static_url=settings.STATIC_URL
         )
-
-    return '{static_url}images/{uni}-on-edx-logo.png'.format(
-        static_url=settings.STATIC_URL, uni=university
-    )
+    elif university:
+        return '{static_url}images/{uni}-on-edx-logo.png'.format(
+            static_url=settings.STATIC_URL, uni=university
+        )
+    else:
+        return '{static_url}images/default-theme/logo.png'.format(
+            static_url=settings.STATIC_URL
+        )

@@ -1,8 +1,11 @@
 import re
+import uuid
 XASSET_LOCATION_TAG = 'c4x'
 XASSET_SRCREF_PREFIX = 'xasset:'
 
 XASSET_THUMBNAIL_TAIL_NAME = '.jpg'
+
+STREAM_DATA_CHUNK_SIZE = 1024
 
 import os
 import logging
@@ -10,8 +13,9 @@ import StringIO
 from urlparse import urlparse, urlunparse, parse_qsl
 from urllib import urlencode
 
-from opaque_keys.edx.locations import AssetLocation
-from opaque_keys.edx.keys import CourseKey
+from opaque_keys.edx.locator import AssetLocator
+from opaque_keys.edx.keys import CourseKey, AssetKey
+from opaque_keys import InvalidKeyError
 from PIL import Image
 
 
@@ -36,8 +40,11 @@ class StaticContent(object):
 
     @staticmethod
     def generate_thumbnail_name(original_name):
+        name_root, ext = os.path.splitext(original_name)
+        if not ext == XASSET_THUMBNAIL_TAIL_NAME:
+            name_root = name_root + ext.replace(u'.', u'-')
         return u"{name_root}{extension}".format(
-            name_root=os.path.splitext(original_name)[0],
+            name_root=name_root,
             extension=XASSET_THUMBNAIL_TAIL_NAME,)
 
     @staticmethod
@@ -52,18 +59,13 @@ class StaticContent(object):
             asset
         """
         path = path.replace('/', '_')
-        return AssetLocation(
-            course_key.org, course_key.course, course_key.run,
+        return course_key.make_asset_key(
             'asset' if not is_thumbnail else 'thumbnail',
-            AssetLocation.clean_keeping_underscores(path),
-            revision
-        )
+            AssetLocator.clean_keeping_underscores(path)
+        ).for_branch(None)
 
     def get_id(self):
         return self.location
-
-    def get_url_path(self):
-        return self.location.to_deprecated_string()
 
     @property
     def data(self):
@@ -104,16 +106,25 @@ class StaticContent(object):
             return None
 
         assert(isinstance(course_key, CourseKey))
-        return course_key.make_asset_key('asset', '').to_deprecated_string()
+        placeholder_id = uuid.uuid4().hex
+        # create a dummy asset location with a fake but unique name. strip off the name, and return it
+        url_path = StaticContent.serialize_asset_key_with_slash(
+            course_key.make_asset_key('asset', placeholder_id).for_branch(None)
+        )
+        return url_path.replace(placeholder_id, '')
 
     @staticmethod
     def get_location_from_path(path):
         """
         Generate an AssetKey for the given path (old c4x/org/course/asset/name syntax)
         """
-        # TODO OpaqueKeys after opaque keys deprecation is working
-        # return AssetLocation.from_string(path)
-        return AssetLocation.from_deprecated_string(path)
+        try:
+            return AssetKey.from_string(path)
+        except InvalidKeyError:
+            # TODO - re-address this once LMS-11198 is tackled.
+            if path.startswith('/'):
+                # try stripping off the leading slash and try again
+                return AssetKey.from_string(path[1:])
 
     @staticmethod
     def convert_legacy_static_url_with_course_id(path, course_id):
@@ -124,7 +135,7 @@ class StaticContent(object):
         # Generate url of urlparse.path component
         scheme, netloc, orig_path, params, query, fragment = urlparse(path)
         loc = StaticContent.compute_location(course_id, orig_path)
-        loc_url = loc.to_deprecated_string()
+        loc_url = StaticContent.serialize_asset_key_with_slash(loc)
 
         # parse the query params for "^/static/" and replace with the location url
         orig_query = parse_qsl(query)
@@ -135,7 +146,7 @@ class StaticContent(object):
                     course_id,
                     query_value[len('/static/'):],
                 )
-                new_query_url = new_query.to_deprecated_string()
+                new_query_url = StaticContent.serialize_asset_key_with_slash(new_query)
                 new_query_list.append((query_name, new_query_url))
             else:
                 new_query_list.append((query_name, query_value))
@@ -145,6 +156,17 @@ class StaticContent(object):
 
     def stream_data(self):
         yield self._data
+
+    @staticmethod
+    def serialize_asset_key_with_slash(asset_key):
+        """
+        Legacy code expects the serialized asset key to start w/ a slash; so, do that in one place
+        :param asset_key:
+        """
+        url = unicode(asset_key)
+        if not url.startswith('/'):
+            url = '/' + url  # TODO - re-address this once LMS-11198 is tackled.
+        return url
 
 
 class StaticContentStream(StaticContent):
@@ -157,9 +179,24 @@ class StaticContentStream(StaticContent):
 
     def stream_data(self):
         while True:
-            chunk = self._stream.read(1024)
+            chunk = self._stream.read(STREAM_DATA_CHUNK_SIZE)
             if len(chunk) == 0:
                 break
+            yield chunk
+
+    def stream_data_in_range(self, first_byte, last_byte):
+        """
+        Stream the data between first_byte and last_byte (included)
+        """
+        self._stream.seek(first_byte)
+        position = first_byte
+        while True:
+            if last_byte < position + STREAM_DATA_CHUNK_SIZE - 1:
+                chunk = self._stream.read(last_byte - position + 1)
+                yield chunk
+                break
+            chunk = self._stream.read(STREAM_DATA_CHUNK_SIZE)
+            position += STREAM_DATA_CHUNK_SIZE
             yield chunk
 
     def close(self):
@@ -183,28 +220,18 @@ class ContentStore(object):
     def find(self, filename):
         raise NotImplementedError
 
-    def get_all_content_for_course(self, course_key, start=0, maxresults=-1, sort=None):
+    def get_all_content_for_course(self, course_key, start=0, maxresults=-1, sort=None, filter_params=None):
         '''
         Returns a list of static assets for a course, followed by the total number of assets.
         By default all assets are returned, but start and maxresults can be provided to limit the query.
 
-        The return format is a list of dictionary elements. Example:
-
-            [
-
-            {u'displayname': u'profile.jpg', u'chunkSize': 262144, u'length': 85374,
-            u'uploadDate': datetime.datetime(2012, 10, 3, 5, 41, 54, 183000), u'contentType': u'image/jpeg',
-            u'_id': {u'category': u'asset', u'name': u'profile.jpg', u'course': u'6.002x', u'tag': u'c4x',
-            u'org': u'MITx', u'revision': None}, u'md5': u'36dc53519d4b735eb6beba51cd686a0e'},
-
-            {u'displayname': u'profile.thumbnail.jpg', u'chunkSize': 262144, u'length': 4073,
-            u'uploadDate': datetime.datetime(2012, 10, 3, 5, 41, 54, 196000), u'contentType': u'image/jpeg',
-            u'_id': {u'category': u'asset', u'name': u'profile.thumbnail.jpg', u'course': u'6.002x', u'tag': u'c4x',
-            u'org': u'MITx', u'revision': None}, u'md5': u'ff1532598830e3feac91c2449eaa60d6'},
-
-            ....
-
-            ]
+        The return format is a list of asset data dictionaries.
+        The asset data dictionaries have the following keys:
+            asset_key (:class:`opaque_keys.edx.AssetKey`): The key of the asset
+            displayname: The human-readable name of the asset
+            uploadDate (datetime.datetime): The date and time that the file was uploadDate
+            contentType: The mimetype string of the asset
+            md5: An md5 hash of the asset content
         '''
         raise NotImplementedError
 
@@ -263,3 +290,10 @@ class ContentStore(object):
                 logging.exception(u"Failed to generate thumbnail for {0}. Exception: {1}".format(content.location, str(e)))
 
         return thumbnail_content, thumbnail_file_location
+
+    def ensure_indexes(self):
+        """
+        Ensure that all appropriate indexes are created that are needed by this modulestore, or raise
+        an exception if unable to.
+        """
+        pass

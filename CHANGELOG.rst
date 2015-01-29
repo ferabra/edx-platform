@@ -5,6 +5,71 @@ These are notable changes in edx-platform.  This is a rolling list of changes,
 in roughly chronological order, most recent first.  Add your entries at or near
 the top.  Include a label indicating the component affected.
 
+Studio/LMS: Implement cohorted courseware. TNL-648
+
+LMS: Student Notes: Eventing for Student Notes. TNL-931
+
+LMS: Student Notes: Add course structure view. TNL-762
+
+LMS: Student Notes: Scroll and opening of notes. TNL-784
+
+LMS: Student Notes: Add styling to Notes page. TNL-932
+
+LMS: Student Notes: Add more graceful error message.
+
+LMS: Student Notes: Toggle all notes TNL-661
+
+LMS: Student Notes: Use JWT ID-Token for authentication annotation requests. TNL-782
+
+LMS: Student Notes: Add possibility to search notes. TNL-731
+
+LMS: Student Notes: Toggle single note visibility. TNL-660
+
+LMS: Student Notes: Add Notes page. TNL-797
+
+LMS: Student Notes: Add possibility to add/edit/remove notes. TNL-655
+
+Platform: Add group_access field to all xblocks.  TNL-670
+
+LMS: Add support for user partitioning based on cohort.  TNL-710
+
+Platform: Add base support for cohorted group configurations.  TNL-649
+
+LMS: Support assigning students to cohorts via a CSV file upload. TNL-735
+
+Common: Add configurable reset button to units
+
+Studio: Add support xblock validation messages on Studio unit/container page. TNL-683
+
+LMS: Support adding cohorts from the instructor dashboard. TNL-162
+
+LMS: Support adding students to a cohort via the instructor dashboard. TNL-163
+
+LMS: Show cohorts on the new instructor dashboard. TNL-161
+
+LMS: Mobile API available for courses that opt in using the Course Advanced
+Setting "Mobile Course Available" (only used in limited closed beta).
+
+Studio: Video Module now has an optional advanced setting "EdX Video ID" for
+courses where assets are managed entirely by the video team. This is optional
+and opt-in (only used in a limited closed beta for now).
+
+LMS: Do not allow individual due dates to be earlier than the normal due date. LMS-6563
+
+Blades: Course teams can turn off Chinese Caching from Studio. BLD-1207
+
+LMS: Instructors can request and see content of previous bulk emails sent in the instructor dashboard.
+
+Studio: New course outline and unit/container pages with revised publishing model. STUD-1790 (part 1)
+
+Studio: Backbone version of the course outline page. STUD-1726.
+
+Studio: New advanced setting "invitation_only" for courses. This setting overrides the enrollment start/end dates
+  if set. LMS-2670
+
+LMS: Register button on About page was active even when greyed out. Now made inactive when appropriate and
+displays appropriate context sensitive message to student. LMS-2717
+
 Blades: Redirect Chinese students to a Chinese CDN for video. BLD-1052.
 
 Studio: Show display names and help text in Advanced Settings. Also hide deprecated settings

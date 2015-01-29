@@ -44,7 +44,32 @@ var submitMidcourseReverificationPhotos = function() {
   $("#reverify_form").submit();
 }
 
+function showSubmissionError() {
+    if (xhr.status == 400) {
+        $('#order-error .copy p').html(xhr.responseText);
+    }
+    $('#order-error').show();
+    $("html, body").animate({ scrollTop: 0 });
+}
+
+function submitForm(data) {
+    for (prop in data) {
+    $('<input>').attr({
+        type: 'hidden',
+        name: prop,
+        value: data[prop]
+    }).appendTo('#pay_form');
+    }
+    $("#pay_form").submit();
+}
+
+function refereshPageMessage() {
+    $('#photo-error').show();
+    $("html, body").animate({ scrollTop: 0 });
+}
+
 var submitToPaymentProcessing = function() {
+  $("#pay_button").addClass('is-disabled').attr('aria-disabled', true);
   var contribution_input = $("input[name='contribution']:checked")
   var contribution = 0;
   if(contribution_input.attr('id') == 'contribution-other') {
@@ -54,33 +79,26 @@ var submitToPaymentProcessing = function() {
       contribution = contribution_input.val();
   }
   var course_id = $("input[name='course_id']").val();
-  var xhr = $.post(
-    "/verify_student/create_order",
-    {
+  $.ajax({
+    url: "/verify_student/create_order",
+    type: 'POST',
+    data: {
       "course_id" : course_id,
       "contribution": contribution,
       "face_image" : $("#face_image")[0].src,
       "photo_id_image" : $("#photo_id_image")[0].src
     },
-    function(data) {
-      for (prop in data) {
-        $('<input>').attr({
-            type: 'hidden',
-            name: prop,
-            value: data[prop]
-        }).appendTo('#pay_form');
+    success:function(data) {
+      if (data.success) {
+        submitForm(data);
+      } else {
+        refereshPageMessage();
       }
+    },
+    error:function(xhr,status,error) {
+      $("#pay_button").removeClass('is-disabled').attr('aria-disabled', false);
+      showSubmissionError()
     }
-  )
-  .done(function(data) {
-    $("#pay_form").submit();
-  })
-  .fail(function(jqXhr,text_status, error_thrown) {
-      if(jqXhr.status == 400) {
-          $('#order-error .copy p').html(jqXhr.responseText);
-      }
-      $('#order-error').show();
-      $("html, body").animate({ scrollTop: 0 });
   });
 }
 
@@ -258,11 +276,6 @@ function objectTagForFlashCamera(name) {
   }
 }
 
-function linkNewWindow(e) {
-        window.open($(e.target).attr('href'));
-            e.preventDefault();
-}
-
 function waitForFlashLoad(func, flash_object) {
     if(!flash_object.hasOwnProperty('percentLoaded') || flash_object.percentLoaded() < 100){
         setTimeout(function() {
@@ -303,6 +316,7 @@ $(document).ready(function() {
   // when moving between steps
   $('#face_next_link').click(function(){
       analytics.pageview("Capture ID Photo");
+      $('#photo-error').hide();
       $('body').addClass('step-photos-id').removeClass('step-photos-cam')
   })
 
@@ -334,6 +348,9 @@ $(document).ready(function() {
   analytics.pageview("Capture Face Photo");
   initSnapshotHandler(["photo_id", "face"], hasHtml5CameraSupport);
 
-  $('a[rel="external"]').attr('title', gettext('This link will open in a new browser window/tab')).bind('click', linkNewWindow);
+  $('a[rel="external"]').attr({
+    title: gettext('This link will open in a new browser window/tab'),
+    target: '_blank'
+  });
 
 });

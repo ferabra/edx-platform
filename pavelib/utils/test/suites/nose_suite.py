@@ -23,6 +23,8 @@ class NoseTestSuite(TestSuite):
         self.report_dir = Env.REPORT_DIR / self.root
         self.test_id_dir = Env.TEST_DIR / self.root
         self.test_ids = self.test_id_dir / 'noseids'
+        self.extra_args = kwargs.get('extra_args', '')
+        self.cov_args = kwargs.get('cov_args', '')
 
     def __enter__(self):
         super(NoseTestSuite, self).__enter__()
@@ -48,9 +50,13 @@ class NoseTestSuite(TestSuite):
             # will run the importable coverage rather than the
             # coverage that OS path finds.
 
+            if not cmd0.endswith('.py'):
+                cmd0 = "`which {}`".format(cmd0)
+
             cmd = (
-                "python -m coverage run --rcfile={root}/.coveragerc "
-                "`which {cmd0}` {cmd_rest}".format(
+                "python -m coverage run {cov_args} --rcfile={root}/.coveragerc "
+                "{cmd0} {cmd_rest}".format(
+                    cov_args=self.cov_args,
                     root=self.root,
                     cmd0=cmd0,
                     cmd_rest=cmd_rest,
@@ -99,21 +105,16 @@ class SystemTestSuite(NoseTestSuite):
     def __enter__(self):
         super(SystemTestSuite, self).__enter__()
 
-        if not self.fasttest:
-            # TODO: Fix the tests so that collectstatic isn't needed ever
-            # add --skip-collect to this when the tests are fixed
-            args = [self.root, '--settings=test']
-            call_task('pavelib.assets.update_assets', args=args)
-
     @property
     def cmd(self):
         cmd = (
             './manage.py {system} test --verbosity={verbosity} '
-            '{test_id} {test_opts} --traceback --settings=test'.format(
+            '{test_id} {test_opts} --traceback --settings=test {extra}'.format(
                 system=self.root,
                 verbosity=self.verbosity,
                 test_id=self.test_id,
                 test_opts=self.test_options_flags,
+                extra=self.extra_args,
             )
         )
 
@@ -131,7 +132,7 @@ class SystemTestSuite(NoseTestSuite):
         # django-nose will import them early in the test process,
         # thereby making sure that we load any django models that are
         # only defined in test files.
-        default_test_id = "{system}/djangoapps/* common/djangoapps/*".format(
+        default_test_id = "{system}/djangoapps/* common/djangoapps/* openedx/core/djangoapps/*".format(
             system=self.root
         )
 
@@ -140,6 +141,9 @@ class SystemTestSuite(NoseTestSuite):
 
         if self.root == 'lms':
             default_test_id += " {system}/tests.py".format(system=self.root)
+        
+        if self.root == 'cms':
+            default_test_id += " {system}/tests/*".format(system=self.root)
 
         return default_test_id
 
@@ -157,13 +161,14 @@ class LibTestSuite(NoseTestSuite):
     def cmd(self):
         cmd = (
             "nosetests --id-file={test_ids} {test_id} {test_opts} "
-            "--with-xunit --xunit-file={xunit_report} "
+            "--with-xunit --xunit-file={xunit_report} {extra}"
             "--verbosity={verbosity}".format(
                 test_ids=self.test_ids,
                 test_id=self.test_id,
                 test_opts=self.test_options_flags,
                 xunit_report=self.xunit_report,
                 verbosity=self.verbosity,
+                extra=self.extra_args,
             )
         )
 

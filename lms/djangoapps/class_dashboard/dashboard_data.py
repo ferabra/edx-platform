@@ -10,12 +10,13 @@ from django.utils.translation import ugettext as _
 
 from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.inheritance import own_metadata
-from analytics.csvs import create_csv_response
+from instructor_analytics.csvs import create_csv_response
 
 from opaque_keys.edx.locations import Location
 
 # Used to limit the length of list displayed to the screen.
 MAX_SCREEN_LIST_LENGTH = 250
+
 
 def get_problem_grade_distribution(course_id):
     """

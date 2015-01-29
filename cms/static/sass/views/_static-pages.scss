@@ -15,21 +15,8 @@
     margin-right: flex-gutter();
 
     .add-pages {
-      @extend %ui-well;
+      @extend %no-content;
       margin: ($baseline*1.5) 0;
-      background-color: $gray-l4;
-      padding: ($baseline*2);
-      text-align: center;
-      color: $gray;
-
-      .new-button {
-        @include font-size(14);
-        margin-left: $baseline;
-
-        [class^="icon-"] {
-          margin-right: ($baseline/2);
-        }
-      }
     }
 
     .notice-incontext {
@@ -105,11 +92,11 @@
         }
 
         &.action-visible .toggle-checkbox ~ .action-button {
-          .icon-eye-open {
+          .fa-eye {
             display: inline-block;
           }
 
-          .icon-eye-close {
+          .fa-eye-slash {
             display: none;
           }
         }
@@ -118,11 +105,11 @@
           background-color: $gray;
           color: $white;
 
-          .icon-eye-open {
+          .fa-eye {
             display: none;
           }
 
-          .icon-eye-close {
+          .fa-eye-slash {
             display: inline-block;
           }
         }
@@ -143,7 +130,7 @@
     }
 
     .wrapper-component-editor {
-      z-index: 9999;
+      @extend %ui-depth4;
       position: relative;
       background: $lightBluishGrey2;
     }
@@ -208,23 +195,23 @@
       }
 
       .drag-handle {
-        background: url(../img/drag-handles.png) center no-repeat #fff;
+        background: url(../images/drag-handles.png) center no-repeat #fff;
       }
     }
 
     .drag-handle {
+      @extend %ui-depth1;
+      @include right(0);
       position: absolute;
       display: block;
       top: 0;
-      right: 0;
-      z-index: 11;
       width: 35px;
       height: 100%;
       border: none;
-      background: url(../img/drag-handles.png) center no-repeat #fff;
+      background: url(../images/drag-handles.png) center no-repeat #fff;
 
       &:hover {
-        background: url(../img/drag-handles.png) center no-repeat #fff;
+        background: url(../images/drag-handles.png) center no-repeat #fff;
       }
 
       &.is-fixed {
@@ -251,8 +238,8 @@
     .component-actions,
     .course-nav-item-actions {
       display: inline-block;
-      float: right;
-      margin-right: ($baseline*2);
+      @include float(right);
+      @include margin-right($baseline*2);
       padding: 8px 0px;
       vertical-align: middle;
       text-align: center;
@@ -287,7 +274,7 @@
           }
         }
 
-        [class^="icon-"] {
+        .icon {
           display: inline-block;
           vertical-align: bottom;
         }
@@ -301,7 +288,7 @@
 
   // basic course nav items - overrides from above
   .course-nav-item {
-    padding: ($baseline*.75) ($baseline/4) ($baseline*.75) $baseline;
+    padding: ($baseline*0.75) ($baseline/4) ($baseline*0.75) $baseline;
     background: $white;
 
     &.is-fixed {
@@ -345,23 +332,23 @@
 
   .xblock-student_view {
     @include transition(background-color $tmg-s3 linear 0s);
+    @extend %t-title4;
     padding: 20px 20px 22px;
-    font-size: 24px;
-    background: #fff;
+    background: $white;
   }
 
   .static-page-item {
     position: relative;
-    margin: 10px 0;
+    margin: ($baseline/2) 0;
     padding: 22px 20px;
     border: 1px solid $darkGrey;
     border-radius: 3px;
-    background: #fff;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .1);
+    background: $white;
+    box-shadow: 0 1px 2px $shadow-l1;
 
     .page-name {
-      font-size: 19px;
-      font-weight: 700;
+      @extend %t-title5;
+      @extend %t-strong;
     }
 
     .item-actions {
@@ -373,7 +360,7 @@
 
 .edit-static-page {
   .main-wrapper {
-    margin-top: 40px;
+    margin-top: ($baseline*2);
   }
 
   .static-page-details {
@@ -386,22 +373,22 @@
   }
 
   .page-display-name-input {
+    @extend %t-copy-lead1;
     width: 100%;
-    font-size: 20px;
   }
 
   .page-contents {
     @include box-sizing(border-box);
     @include linear-gradient(top, rgba(255, 255, 255, 0), rgba(255, 255, 255, .3));
+    @extend %t-copy-sub1;
     width: 100%;
     height: 360px;
     padding: 15px;
     border: 1px solid #b0b6c2;
     border-radius: 2px;
     background-color: #edf1f5;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .1) inset;
+    box-shadow: 0 1px 2px $shadow-l1 inset;
     font-family: Monaco, monospace;
-    font-size: 13px;
     color: #3c3c3c;
     outline: 0;
   }

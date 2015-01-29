@@ -1,11 +1,16 @@
+"""
+Useful django models for implementing XBlock infrastructure in django.
+"""
+
+import warnings
+
 from django.db import models
 from django.core.exceptions import ValidationError
 from opaque_keys.edx.locations import SlashSeparatedCourseKey, Location
-from opaque_keys.edx.keys import CourseKey, UsageKey
+from opaque_keys.edx.keys import CourseKey, UsageKey, BlockTypeKey
+from opaque_keys.edx.locator import Locator
 
 from south.modelsinspector import add_introspection_rules
-add_introspection_rules([], ["^xmodule_django\.models\.CourseKeyField"])
-add_introspection_rules([], ["^xmodule_django\.models\.LocationKeyField"])
 
 
 class NoneToEmptyManager(models.Manager):
@@ -44,39 +49,82 @@ class NoneToEmptyQuerySet(models.query.QuerySet):
         return super(NoneToEmptyQuerySet, self)._filter_or_exclude(*args, **kwargs)
 
 
-class CourseKeyField(models.CharField):
-    description = "A SlashSeparatedCourseKey object, saved to the DB in the form of a string"
+def _strip_object(key):
+    """
+    Strips branch and version info if the given key supports those attributes.
+    """
+    if hasattr(key, 'version_agnostic') and hasattr(key, 'for_branch'):
+        return key.for_branch(None).version_agnostic()
+    else:
+        return key
+
+
+def _strip_value(value, lookup='exact'):
+    """
+    Helper function to remove the branch and version information from the given value,
+    which could be a single object or a list.
+    """
+    if lookup == 'in':
+        stripped_value = [_strip_object(el) for el in value]
+    else:
+        stripped_value = _strip_object(value)
+    return stripped_value
+
+
+class OpaqueKeyField(models.CharField):
+    """
+    A django field for storing OpaqueKeys.
+
+    The baseclass will return the value from the database as a string, rather than an instance
+    of an OpaqueKey, leaving the application to determine which key subtype to parse the string
+    as.
+
+    Subclasses must specify a KEY_CLASS attribute, in which case the field will use :meth:`from_string`
+    to parse the key string, and will return an instance of KEY_CLASS.
+    """
+    description = "An OpaqueKey object, saved to the DB in the form of a string."
 
     __metaclass__ = models.SubfieldBase
 
     Empty = object()
+    KEY_CLASS = None
+
+    def __init__(self, *args, **kwargs):
+        if self.KEY_CLASS is None:
+            raise ValueError('Must specify KEY_CLASS in OpaqueKeyField subclasses')
+
+        super(OpaqueKeyField, self).__init__(*args, **kwargs)
 
     def to_python(self, value):
         if value is self.Empty or value is None:
             return None
 
-        assert isinstance(value, (basestring, CourseKey))
+        assert isinstance(value, (basestring, self.KEY_CLASS))
         if value == '':
             # handle empty string for models being created w/o fields populated
             return None
 
         if isinstance(value, basestring):
-            return SlashSeparatedCourseKey.from_deprecated_string(value)
+            return self.KEY_CLASS.from_string(value)
         else:
             return value
 
     def get_prep_lookup(self, lookup, value):
         if lookup == 'isnull':
-            raise TypeError('Use CourseKeyField.Empty rather than None to query for a missing CourseKeyField')
+            raise TypeError('Use {0}.Empty rather than None to query for a missing {0}'.format(self.__class__.__name__))
 
-        return super(CourseKeyField, self).get_prep_lookup(lookup, value)
+        return super(OpaqueKeyField, self).get_prep_lookup(
+            lookup,
+            # strip key before comparing
+            _strip_value(value, lookup)
+        )
 
     def get_prep_value(self, value):
         if value is self.Empty or value is None:
             return ''  # CharFields should use '' as their empty value, rather than None
 
-        assert isinstance(value, CourseKey)
-        return value.to_deprecated_string()
+        assert isinstance(value, self.KEY_CLASS)
+        return unicode(_strip_value(value))
 
     def validate(self, value, model_instance):
         """Validate Empty values, otherwise defer to the parent"""
@@ -84,61 +132,49 @@ class CourseKeyField(models.CharField):
         if not self.blank and value is self.Empty:
             raise ValidationError(self.error_messages['blank'])
         else:
-            return super(CourseKeyField, self).validate(value, model_instance)
+            return super(OpaqueKeyField, self).validate(value, model_instance)
 
     def run_validators(self, value):
         """Validate Empty values, otherwise defer to the parent"""
         if value is self.Empty:
             return
 
-        return super(CourseKeyField, self).run_validators(value)
+        return super(OpaqueKeyField, self).run_validators(value)
 
 
-class LocationKeyField(models.CharField):
+class CourseKeyField(OpaqueKeyField):
+    """
+    A django Field that stores a CourseKey object as a string.
+    """
+    description = "A CourseKey object, saved to the DB in the form of a string"
+    KEY_CLASS = CourseKey
+
+
+class UsageKeyField(OpaqueKeyField):
+    """
+    A django Field that stores a UsageKey object as a string.
+    """
     description = "A Location object, saved to the DB in the form of a string"
+    KEY_CLASS = UsageKey
 
-    __metaclass__ = models.SubfieldBase
 
-    Empty = object()
+class LocationKeyField(UsageKeyField):
+    """
+    A django Field that stores a UsageKey object as a string.
+    """
+    def __init__(self, *args, **kwargs):
+        warnings.warn("LocationKeyField is deprecated. Please use UsageKeyField instead.", stacklevel=2)
+        super(LocationKeyField, self).__init__(*args, **kwargs)
 
-    def to_python(self, value):
-        if value is self.Empty or value is None:
-            return value
 
-        assert isinstance(value, (basestring, UsageKey))
+class BlockTypeKeyField(OpaqueKeyField):
+    """
+    A django Field that stores a BlockTypeKey object as a string.
+    """
+    description = "A BlockTypeKey object, saved to the DB in the form of a string."
+    KEY_CLASS = BlockTypeKey
 
-        if value == '':
-            return None
 
-        if isinstance(value, basestring):
-            return Location.from_deprecated_string(value)
-        else:
-            return value
-
-    def get_prep_lookup(self, lookup, value):
-        if lookup == 'isnull':
-            raise TypeError('Use LocationKeyField.Empty rather than None to query for a missing LocationKeyField')
-
-        return super(LocationKeyField, self).get_prep_lookup(lookup, value)
-
-    def get_prep_value(self, value):
-        if value is self.Empty:
-            return ''
-
-        assert isinstance(value, UsageKey)
-        return value.to_deprecated_string()
-
-    def validate(self, value, model_instance):
-        """Validate Empty values, otherwise defer to the parent"""
-        # raise validation error if the use of this field says it can't be blank but it is
-        if not self.blank and value is self.Empty:
-            raise ValidationError(self.error_messages['blank'])
-        else:
-            return super(LocationKeyField, self).validate(value, model_instance)
-
-    def run_validators(self, value):
-        """Validate Empty values, otherwise defer to the parent"""
-        if value is self.Empty:
-            return
-
-        return super(LocationKeyField, self).run_validators(value)
+add_introspection_rules([], [r"^xmodule_django\.models\.CourseKeyField"])
+add_introspection_rules([], [r"^xmodule_django\.models\.LocationKeyField"])
+add_introspection_rules([], [r"^xmodule_django\.models\.UsageKeyField"])

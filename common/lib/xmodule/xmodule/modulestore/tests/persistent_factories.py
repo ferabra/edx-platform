@@ -4,8 +4,10 @@ from xmodule.course_module import CourseDescriptor
 from xmodule.x_module import XModuleDescriptor
 import factory
 from factory.helpers import lazy_attribute
-# Factories don't have __init__ methods, and are self documenting
-# pylint: disable=W0232, C0111
+from opaque_keys.edx.keys import UsageKey
+# Factories are self documenting
+# pylint: disable=missing-docstring
+
 
 class SplitFactory(factory.Factory):
     """
@@ -33,7 +35,7 @@ class PersistentCourseFactory(SplitFactory):
     """
     FACTORY_FOR = CourseDescriptor
 
-    # pylint: disable=W0613
+    # pylint: disable=unused-argument
     @classmethod
     def _create(cls, target_class, course='999', run='run', org='testX', user_id=ModuleStoreEnum.UserID.test,
                 master_branch=ModuleStoreEnum.BranchName.draft, **kwargs):
@@ -58,10 +60,10 @@ class ItemFactory(SplitFactory):
 
     display_name = factory.LazyAttributeSequence(lambda o, n: "{} {}".format(o.category, n))
 
-    # pylint: disable=W0613
+    # pylint: disable=unused-argument
     @classmethod
     def _create(cls, target_class, parent_location, category='chapter',
-                user_id=ModuleStoreEnum.UserID.test, block_id=None, definition_locator=None, force=False,
+                user_id=ModuleStoreEnum.UserID.test, definition_locator=None, force=False,
                 continue_version=False, **kwargs):
         """
         passes *kwargs* as the new item's field values:
@@ -73,10 +75,16 @@ class ItemFactory(SplitFactory):
         :param definition_locator (optional): the DescriptorLocator for the definition this uses or branches
         """
         modulestore = kwargs.pop('modulestore')
-        return modulestore.create_item(
-            parent_location, category, user_id, definition_locator=definition_locator,
-            block_id=block_id, force=force, continue_version=continue_version, fields=kwargs
-        )
+        if isinstance(parent_location, UsageKey):
+            return modulestore.create_child(
+                user_id, parent_location, category, defintion_locator=definition_locator,
+                force=force, continue_version=continue_version, **kwargs
+            )
+        else:
+            return modulestore.create_item(
+                user_id, parent_location, category, defintion_locator=definition_locator,
+                force=force, continue_version=continue_version, **kwargs
+            )
 
     @classmethod
     def _build(cls, target_class, *args, **kwargs):

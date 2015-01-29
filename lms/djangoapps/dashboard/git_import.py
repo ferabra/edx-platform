@@ -51,6 +51,7 @@ class GitImportError(Exception):
     CANNOT_BRANCH = _('Unable to switch to specified branch. Please check '
                       'your branch name.')
 
+
 def cmd_log(cmd, cwd):
     """
     Helper function to redirect stderr to stdout and log the command
@@ -86,7 +87,7 @@ def switch_branch(branch, rdir):
     except subprocess.CalledProcessError as ex:
         log.exception('Getting a list of remote branches failed: %r', ex.output)
         raise GitImportError(GitImportError.CANNOT_BRANCH)
-    if not branch in output:
+    if branch not in output:
         raise GitImportError(GitImportError.REMOTE_BRANCH_MISSING)
     # Check it the remote branch has already been made locally
     cmd = ['git', 'branch', '-a', ]
@@ -123,11 +124,12 @@ def add_repo(repo, rdir_in, branch=None):
     If branch is left as None, it will fetch the most recent
     version of the current branch.
     """
-    # pylint: disable=R0915
+    # pylint: disable=too-many-statements
 
     # Set defaults even if it isn't defined in settings
     mongo_db = {
         'host': 'localhost',
+        'port': 27017,
         'user': '',
         'password': '',
         'db': 'xlog',
@@ -135,7 +137,7 @@ def add_repo(repo, rdir_in, branch=None):
 
     # Allow overrides
     if hasattr(settings, 'MONGODB_LOG'):
-        for config_item in ['host', 'user', 'password', 'db', ]:
+        for config_item in ['host', 'user', 'password', 'db', 'port']:
             mongo_db[config_item] = settings.MONGODB_LOG.get(
                 config_item, mongo_db[config_item])
 
@@ -258,13 +260,13 @@ def add_repo(repo, rdir_in, branch=None):
                                               cwd=os.path.abspath(cdir)))
 
     # store import-command-run output in mongo
-    mongouri = 'mongodb://{user}:{password}@{host}/{db}'.format(**mongo_db)
+    mongouri = 'mongodb://{user}:{password}@{host}:{port}/{db}'.format(**mongo_db)
 
     try:
         if mongo_db['user'] and mongo_db['password']:
             mdb = mongoengine.connect(mongo_db['db'], host=mongouri)
         else:
-            mdb = mongoengine.connect(mongo_db['db'], host=mongo_db['host'])
+            mdb = mongoengine.connect(mongo_db['db'], host=mongo_db['host'], port=mongo_db['port'])
     except mongoengine.connection.ConnectionError:
         log.exception('Unable to connect to mongodb to save log, please '
                       'check MONGODB_LOG settings')

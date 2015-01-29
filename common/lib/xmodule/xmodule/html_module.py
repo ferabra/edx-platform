@@ -16,6 +16,9 @@ from xmodule.xml_module import XmlDescriptor, name_to_pathname
 import textwrap
 from xmodule.contentstore.content import StaticContent
 from xblock.core import XBlock
+from xmodule.edxnotes_utils import edxnotes
+from xmodule.annotator_mixin import html_to_text
+import re
 
 log = logging.getLogger("edx.courseware")
 
@@ -51,7 +54,10 @@ class HtmlFields(object):
     )
 
 
-class HtmlModule(HtmlFields, XModule):
+class HtmlModuleMixin(HtmlFields, XModule):
+    """
+    Attributes and methods used by HtmlModules internally.
+    """
     js = {
         'coffee': [
             resource_string(__name__, 'js/src/javascript_loader.coffee'),
@@ -70,6 +76,14 @@ class HtmlModule(HtmlFields, XModule):
         if self.system.anonymous_student_id:
             return self.data.replace("%%USER_ID%%", self.system.anonymous_student_id)
         return self.data
+
+
+@edxnotes
+class HtmlModule(HtmlModuleMixin):
+    """
+    Module for putting raw html in a course
+    """
+    pass
 
 
 class HtmlDescriptor(HtmlFields, XmlDescriptor, EditingDescriptor):
@@ -113,7 +127,7 @@ class HtmlDescriptor(HtmlFields, XmlDescriptor, EditingDescriptor):
         Show them only if use_latex_compiler is set to True in
         course settings.
         """
-        return (not 'latex' in template['template_id'] or course.use_latex_compiler)
+        return ('latex' not in template['template_id'] or course.use_latex_compiler)
 
     def get_context(self):
         """
@@ -136,7 +150,7 @@ class HtmlDescriptor(HtmlFields, XmlDescriptor, EditingDescriptor):
     # snippets that will be included in the middle of pages.
 
     @classmethod
-    def load_definition(cls, xml_object, system, location):
+    def load_definition(cls, xml_object, system, location, id_generator):
         '''Load a descriptor from the specified xml_object:
 
         If there is a filename attribute, load it as a string, and
@@ -145,6 +159,12 @@ class HtmlDescriptor(HtmlFields, XmlDescriptor, EditingDescriptor):
         If there is not a filename attribute, the definition is the body
         of the xml_object, without the root tag (do not want <html> in the
         middle of a page)
+
+        Args:
+            xml_object: an lxml.etree._Element containing the definition to load
+            system: the modulestore system or runtime which caches data
+            location: the usage id for the block--used to compute the filename if none in the xml_object
+            id_generator: used by other impls of this method to generate the usage_id
         '''
         filename = xml_object.get('filename')
         if filename is None:
@@ -234,6 +254,25 @@ class HtmlDescriptor(HtmlFields, XmlDescriptor, EditingDescriptor):
         non_editable_fields.append(HtmlDescriptor.use_latex_compiler)
         return non_editable_fields
 
+    def index_dictionary(self):
+        xblock_body = super(HtmlDescriptor, self).index_dictionary()
+        # Removing HTML-encoded non-breaking space characters
+        html_content = re.sub(r"(\s|&nbsp;|//)+", " ", html_to_text(self.data))
+        # Removing HTML CDATA
+        html_content = re.sub(r"<!\[CDATA\[.*\]\]>", "", html_content)
+        # Removing HTML comments
+        html_content = re.sub(r"<!--.*-->", "", html_content)
+        html_body = {
+            "html_content": html_content,
+            "display_name": self.display_name,
+        }
+        if "content" in xblock_body:
+            xblock_body["content"].update(html_body)
+        else:
+            xblock_body["content"] = html_body
+        xblock_body["content_type"] = "HTML Content"
+        return xblock_body
+
 
 class AboutFields(object):
     display_name = String(
@@ -249,7 +288,7 @@ class AboutFields(object):
 
 
 @XBlock.tag("detached")
-class AboutModule(AboutFields, HtmlModule):
+class AboutModule(AboutFields, HtmlModuleMixin):
     """
     Overriding defaults but otherwise treated as HtmlModule.
     """
@@ -286,7 +325,7 @@ class StaticTabFields(object):
 
 
 @XBlock.tag("detached")
-class StaticTabModule(StaticTabFields, HtmlModule):
+class StaticTabModule(StaticTabFields, HtmlModuleMixin):
     """
     Supports the field overrides
     """
@@ -320,7 +359,7 @@ class CourseInfoFields(object):
 
 
 @XBlock.tag("detached")
-class CourseInfoModule(CourseInfoFields, HtmlModule):
+class CourseInfoModule(CourseInfoFields, HtmlModuleMixin):
     """
     Just to support xblock field overrides
     """

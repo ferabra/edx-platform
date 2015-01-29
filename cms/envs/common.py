@@ -22,7 +22,12 @@ Longer TODO:
 
 # We intentionally define lots of variables that aren't used, and
 # want to import all variables from base settings files
-# pylint: disable=W0401, W0611, W0614
+# pylint: disable=wildcard-import, unused-import, unused-wildcard-import
+
+# Pylint gets confused by path.py instances, which report themselves as class
+# objects. As a result, pylint applies the wrong regex in validating names,
+# and throws spurious errors. Therefore, we disable invalid-name checking.
+# pylint: disable=invalid-name
 
 import imp
 import os
@@ -30,17 +35,20 @@ import sys
 import lms.envs.common
 # Although this module itself may not use these imported variables, other dependent modules may.
 from lms.envs.common import (
-    USE_TZ, TECH_SUPPORT_EMAIL, PLATFORM_NAME, BUGS_EMAIL, DOC_STORE_CONFIG, ALL_LANGUAGES, WIKI_ENABLED, MODULESTORE
+    USE_TZ, TECH_SUPPORT_EMAIL, PLATFORM_NAME, BUGS_EMAIL, DOC_STORE_CONFIG, ALL_LANGUAGES, WIKI_ENABLED, MODULESTORE,
+    update_module_store_settings, ASSET_IGNORE_REGEX, COPYRIGHT_YEAR
 )
 from path import path
 from warnings import simplefilter
-from lms.envs.modulestore_settings import *
 
-from lms.lib.xblock.mixin import LmsBlockMixin
-from dealer.git import git
+from lms.djangoapps.lms_xblock.mixin import LmsBlockMixin
+from cms.lib.xblock.authoring_mixin import AuthoringMixin
+import dealer.git
+from xmodule.modulestore.edit_info import EditInfoMixin
 
 ############################ FEATURE CONFIGURATION #############################
-
+STUDIO_NAME = "Studio"
+STUDIO_SHORT_NAME = "Studio"
 FEATURES = {
     'USE_DJANGO_PIPELINE': True,
 
@@ -108,7 +116,46 @@ FEATURES = {
 
     # Toggles Group Configuration editing functionality
     'ENABLE_GROUP_CONFIGURATIONS': os.environ.get('FEATURE_GROUP_CONFIGURATIONS'),
+
+    # Modulestore to use for new courses
+    'DEFAULT_STORE_FOR_NEW_COURSE': None,
+
+    # Turn off Video Upload Pipeline through Studio, by default
+    'ENABLE_VIDEO_UPLOAD_PIPELINE': False,
+
+
+    # Is this an edX-owned domain? (edx.org)
+    # for consistency in user-experience, keep the value of this feature flag
+    # in sync with the one in lms/envs/common.py
+    'IS_EDX_DOMAIN': False,
+
+    # let students save and manage their annotations
+    # for consistency in user-experience, keep the value of this feature flag
+    # in sync with the one in lms/envs/common.py
+    'ENABLE_EDXNOTES': False,
+
+    # Enable support for content libraries. Note that content libraries are
+    # only supported in courses using split mongo. Change the setting
+    # DEFAULT_STORE_FOR_NEW_COURSE to be 'split' to have future courses
+    # and libraries created with split.
+    'ENABLE_CONTENT_LIBRARIES': False,
+
+    # Milestones application flag
+    'MILESTONES_APP': False,
+
+    # Prerequisite courses feature flag
+    'ENABLE_PREREQUISITE_COURSES': False,
+
+    # Toggle course milestones app/feature
+    'MILESTONES_APP': False,
+
+    # Toggle course entrance exams feature
+    'ENTRANCE_EXAMS': False,
+
+    # Enable the courseware search functionality
+    'ENABLE_COURSEWARE_INDEX': False,
 }
+
 ENABLE_JASMINE = False
 
 
@@ -128,12 +175,12 @@ sys.path.append(COMMON_ROOT / 'lib')
 
 # For geolocation ip database
 GEOIP_PATH = REPO_ROOT / "common/static/data/geoip/GeoIP.dat"
-
+GEOIPV6_PATH = REPO_ROOT / "common/static/data/geoip/GeoIPv6.dat"
 
 ############################# WEB CONFIGURATION #############################
 # This is where we stick our compiled template files.
-from tempdir import mkdtemp_clean
-MAKO_MODULE_DIR = mkdtemp_clean('mako')
+import tempfile
+MAKO_MODULE_DIR = os.path.join(tempfile.gettempdir(), 'mako_cms')
 MAKO_TEMPLATES = {}
 MAKO_TEMPLATES['main'] = [
     PROJECT_ROOT / 'templates',
@@ -256,7 +303,13 @@ from xmodule.x_module import XModuleMixin
 
 # This should be moved into an XBlock Runtime/Application object
 # once the responsibility of XBlock creation is moved out of modulestore - cpennington
-XBLOCK_MIXINS = (LmsBlockMixin, InheritanceMixin, XModuleMixin)
+XBLOCK_MIXINS = (
+    LmsBlockMixin,
+    InheritanceMixin,
+    XModuleMixin,
+    EditInfoMixin,
+    AuthoringMixin,
+)
 
 # Allow any XBlock in Studio
 # You should also enable the ALLOW_ALL_ADVANCED_COMPONENTS feature flag, so that
@@ -270,6 +323,7 @@ MODULESTORE_BRANCH = 'draft-preferred'
 # Change DEBUG/TEMPLATE_DEBUG in your environment settings files, not here
 DEBUG = False
 TEMPLATE_DEBUG = False
+SESSION_COOKIE_SECURE = False
 
 # Site info
 SITE_ID = 1
@@ -290,10 +344,19 @@ SERVER_EMAIL = 'devops@example.com'
 ADMINS = ()
 MANAGERS = ADMINS
 
+EDX_PLATFORM_REVISION = os.environ.get('EDX_PLATFORM_REVISION')
+
+if not EDX_PLATFORM_REVISION:
+    try:
+        # Get git revision of the current file
+        EDX_PLATFORM_REVISION = dealer.git.Backend(path=REPO_ROOT).revision
+    except TypeError:
+        # Not a git repository
+        EDX_PLATFORM_REVISION = 'unknown'
+
 # Static content
-STATIC_URL = '/static/' + git.revision + "/"
-ADMIN_MEDIA_PREFIX = '/static/admin/'
-STATIC_ROOT = ENV_ROOT / "staticfiles" / git.revision
+STATIC_URL = '/static/' + EDX_PLATFORM_REVISION + "/"
+STATIC_ROOT = ENV_ROOT / "staticfiles" / EDX_PLATFORM_REVISION
 
 STATICFILES_DIRS = [
     COMMON_ROOT / "static",
@@ -307,8 +370,11 @@ STATICFILES_DIRS = [
 # Locale/Internationalization
 TIME_ZONE = 'America/New_York'  # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
 LANGUAGE_CODE = 'en'  # http://www.i18nguy.com/unicode/language-identifiers.html
+LANGUAGES_BIDI = lms.envs.common.LANGUAGES_BIDI
 
 LANGUAGES = lms.envs.common.LANGUAGES
+LANGUAGE_DICT = dict(LANGUAGES)
+
 USE_I18N = True
 USE_L10N = True
 
@@ -322,8 +388,7 @@ MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
 EMBARGO_SITE_REDIRECT_URL = None
 
 ############################### Pipeline #######################################
-
-STATICFILES_STORAGE = 'pipeline.storage.PipelineCachedStorage'
+STATICFILES_STORAGE = 'cms.lib.django_require.staticstorage.OptimizedCachedRequireJsStorage'
 
 from rooted_paths import rooted_glob
 
@@ -367,11 +432,46 @@ PIPELINE_CSS = {
         ],
         'output_filename': 'css/cms-style-app-extend1.css',
     },
+    'style-app-rtl': {
+        'source_filenames': [
+            'sass/style-app-rtl.css',
+        ],
+        'output_filename': 'css/cms-style-app-rtl.css',
+    },
+    'style-app-extend1-rtl': {
+        'source_filenames': [
+            'sass/style-app-extend1-rtl.css',
+        ],
+        'output_filename': 'css/cms-style-app-extend1-rtl.css',
+    },
     'style-xmodule': {
         'source_filenames': [
             'sass/style-xmodule.css',
         ],
         'output_filename': 'css/cms-style-xmodule.css',
+    },
+    'style-xmodule-rtl': {
+        'source_filenames': [
+            'sass/style-xmodule-rtl.css',
+        ],
+        'output_filename': 'css/cms-style-xmodule-rtl.css',
+    },
+    'style-xmodule-annotations': {
+        'source_filenames': [
+            'css/vendor/ova/annotator.css',
+            'css/vendor/ova/edx-annotator.css',
+            'css/vendor/ova/video-js.min.css',
+            'css/vendor/ova/rangeslider.css',
+            'css/vendor/ova/share-annotator.css',
+            'css/vendor/ova/richText-annotator.css',
+            'css/vendor/ova/tags-annotator.css',
+            'css/vendor/ova/flagging-annotator.css',
+            'css/vendor/ova/diacritic-annotator.css',
+            'css/vendor/ova/grouping-annotator.css',
+            'css/vendor/ova/ova.css',
+            'js/vendor/ova/catch/css/main.css'
+        ],
+        'output_filename': 'css/cms-style-xmodule-annotations.css',
     },
 }
 
@@ -418,6 +518,39 @@ STATICFILES_IGNORE_PATTERNS = (
 )
 
 PIPELINE_YUI_BINARY = 'yui-compressor'
+
+################################# DJANGO-REQUIRE ###############################
+
+# The baseUrl to pass to the r.js optimizer, relative to STATIC_ROOT.
+REQUIRE_BASE_URL = "./"
+
+# The name of a build profile to use for your project, relative to REQUIRE_BASE_URL.
+# A sensible value would be 'app.build.js'. Leave blank to use the built-in default build profile.
+# Set to False to disable running the default profile (e.g. if only using it to build Standalone
+# Modules)
+REQUIRE_BUILD_PROFILE = "build.js"
+
+# The name of the require.js script used by your project, relative to REQUIRE_BASE_URL.
+REQUIRE_JS = "js/vendor/require.js"
+
+# A dictionary of standalone modules to build with almond.js.
+REQUIRE_STANDALONE_MODULES = {}
+
+# Whether to run django-require in debug mode.
+REQUIRE_DEBUG = False
+
+# A tuple of files to exclude from the compilation result of r.js.
+REQUIRE_EXCLUDE = ("build.txt",)
+
+# The execution environment in which to run r.js: auto, node or rhino.
+# auto will autodetect the environment and make use of node if available and rhino if not.
+# It can also be a path to a custom class that subclasses require.environments.Environment and defines some "args" function that returns a list with the command arguments to execute.
+REQUIRE_ENVIRONMENT = "node"
+
+# If you want to enable Tender integration (http://tenderapp.com/),
+# put in the domain where Tender hosts tender_widget.js. For example,
+# TENDER_DOMAIN = "example.tenderapp.com"
+TENDER_DOMAIN = None
 
 ################################# CELERY ######################################
 
@@ -485,6 +618,14 @@ YOUTUBE = {
     },
 }
 
+############################# VIDEO UPLOAD PIPELINE #############################
+
+VIDEO_UPLOAD_PIPELINE = {
+    'BUCKET': '',
+    'ROOT_PATH': '',
+    'CONCURRENT_UPLOAD_LIMIT': 4,
+}
+
 ############################ APPS #####################################
 
 INSTALLED_APPS = (
@@ -511,7 +652,8 @@ INSTALLED_APPS = (
     'contentstore',
     'course_creators',
     'student',  # misleading name due to sharing with lms
-    'course_groups',  # not used in cms (yet), but tests run
+    'openedx.core.djangoapps.course_groups',  # not used in cms (yet), but tests run
+    'xblock_config',
 
     # Tracking
     'track',
@@ -525,6 +667,7 @@ INSTALLED_APPS = (
     'pipeline',
     'staticfiles',
     'static_replace',
+    'require',
 
     # comment common
     'django_comment_common',
@@ -542,13 +685,19 @@ INSTALLED_APPS = (
     'reverification',
 
     # User preferences
-    'user_api',
+    'openedx.core.djangoapps.user_api',
     'django_openid_auth',
 
     'embargo',
 
     # Monitoring signals
     'monitoring',
+
+    # Course action state
+    'course_action_state',
+
+    # Additional problem types
+    'edx_jsme',    # Molecular Structure
 )
 
 
@@ -611,15 +760,21 @@ MAX_FAILED_LOGIN_ATTEMPTS_LOCKOUT_PERIOD_SECS = 15 * 60
 ### Apps only installed in some instances
 
 OPTIONAL_APPS = (
-    'edx_jsdraw',
     'mentoring',
 
     # edx-ora2
     'submissions',
     'openassessment',
     'openassessment.assessment',
+    'openassessment.fileupload',
     'openassessment.workflow',
-    'openassessment.xblock'
+    'openassessment.xblock',
+
+    # edxval
+    'edxval',
+
+    # milestones
+    'milestones',
 )
 
 
@@ -639,3 +794,93 @@ for app_name in OPTIONAL_APPS:
 ### ADVANCED_SECURITY_CONFIG
 # Empty by default
 ADVANCED_SECURITY_CONFIG = {}
+
+### External auth usage -- prefixes for ENROLLMENT_DOMAIN
+SHIBBOLETH_DOMAIN_PREFIX = 'shib:'
+OPENID_DOMAIN_PREFIX = 'openid:'
+
+### Size of chunks into which asset uploads will be divided
+UPLOAD_CHUNK_SIZE_IN_MB = 10
+
+### Max size of asset uploads to GridFS
+MAX_ASSET_UPLOAD_FILE_SIZE_IN_MB = 10
+
+# FAQ url to direct users to if they upload
+# a file that exceeds the above size
+MAX_ASSET_UPLOAD_FILE_SIZE_URL = ""
+
+### Default value for entrance exam minimum score
+ENTRANCE_EXAM_MIN_SCORE_PCT = 50
+
+################ ADVANCED_COMPONENT_TYPES ###############
+
+ADVANCED_COMPONENT_TYPES = [
+    'annotatable',
+    'textannotation',  # module for annotating text (with annotation table)
+    'videoannotation',  # module for annotating video (with annotation table)
+    'imageannotation',  # module for annotating image (with annotation table)
+    'word_cloud',
+    'graphical_slider_tool',
+    'lti',
+    'library_content',
+    # XBlocks from pmitros repos are prototypes. They should not be used
+    # except for edX Learning Sciences experiments on edge.edx.org without
+    # further work to make them robust, maintainable, finalize data formats,
+    # etc.
+    'concept',  # Concept mapper. See https://github.com/pmitros/ConceptXBlock
+    'done',  # Lets students mark things as done. See https://github.com/pmitros/DoneXBlock
+    'audio',  # Embed an audio file. See https://github.com/pmitros/AudioXBlock
+    'recommender',  # Crowdsourced recommender. Prototype by dli&pmitros. Intended for roll-out in one place in one course.
+    'profile',  # Prototype user profile XBlock. Used to test XBlock parameter passing. See https://github.com/pmitros/ProfileXBlock
+
+    'split_test',
+    'combinedopenended',
+    'peergrading',
+    'notes',
+    'schoolyourself_review',
+    'schoolyourself_lesson',
+]
+
+# Adding components in this list will disable the creation of new problem for those
+# compoenents in studio. Existing problems will work fine and one can edit them in studio
+DEPRECATED_ADVANCED_COMPONENT_TYPES = []
+
+# Specify xblocks that should be treated as advanced problems. Each entry is a tuple
+# specifying the xblock name and an optional YAML template to be used.
+ADVANCED_PROBLEM_TYPES = [
+    {
+        'component': 'openassessment',
+        'boilerplate_name': None,
+    }
+]
+
+#date format the api will be formatting the datetime values
+API_DATE_FORMAT = '%Y-%m-%d'
+
+# Files and Uploads type filter values
+
+FILES_AND_UPLOAD_TYPE_FILTERS = {
+    "Images": ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/tiff', 'image/tif', 'image/x-icon'],
+    "Documents": [
+        'application/pdf',
+        'text/plain',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.openxmlformats-officedocument.presentationml.slideshow',
+        'application/vnd.openxmlformats-officedocument.presentationml.template',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.template',
+        'application/msword',
+        'application/vnd.ms-excel',
+        'application/vnd.ms-powerpoint',
+    ],
+}
+
+# Default to no Search Engine
+SEARCH_ENGINE = "search.tests.mock_search_engine.MockSearchEngine"
+ELASTIC_FIELD_MAPPINGS = {
+    "start_date": {
+        "type": "date"
+    }
+}

@@ -48,7 +48,7 @@ class TabNavPage(PageObject):
         Return the CSS to click for `tab_name`.
         If no tabs exist for that name, return `None`.
         """
-        all_tabs = self._tab_names
+        all_tabs = self.tab_names
 
         try:
             tab_index = all_tabs.index(tab_name)
@@ -58,7 +58,7 @@ class TabNavPage(PageObject):
             return 'ol.course-tabs li:nth-of-type({0}) a'.format(tab_index + 1)
 
     @property
-    def _tab_names(self):
+    def tab_names(self):
         """
         Return the list of available tab names.  If no tab names
         are available, wait for them to load.  Raises a `BrokenPromiseError`
@@ -83,7 +83,6 @@ class TabNavPage(PageObject):
             return False
         else:
             return current_tab_list[0].strip().split('\n')[0] == tab_name
-
 
     def _is_on_tab_promise(self, tab_name):
         """

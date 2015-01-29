@@ -1,5 +1,6 @@
 class @Sequence
   constructor: (element) ->
+    @requestToken = $(element).data('request-token')
     @el = $(element).find('.sequence')
     @contents = @$('.seq_contents')
     @content_container = @$('#seq_content')
@@ -102,7 +103,7 @@ class @Sequence
       current_tab = @contents.eq(new_position - 1)
       @content_container.html(current_tab.text()).attr("aria-labelledby", current_tab.attr("aria-labelledby"))
 
-      XBlock.initializeBlocks(@content_container)
+      XBlock.initializeBlocks(@content_container, @requestToken)
 
       window.update_schematics() # For embedded circuit simulator exercises in 6.002x
 
@@ -124,14 +125,6 @@ class @Sequence
 
     if (1 <= new_position) and (new_position <= @num_contents)
       Logger.log "seq_goto", old: @position, new: new_position, id: @id
-
-      analytics.pageview @id
-
-      # navigation by clicking the tab directly
-      analytics.track "Accessed Sequential Directly",
-        sequence_id: @id
-        current_sequential: @position
-        target_sequential: new_position
 
       # On Sequence change, destroy any existing polling thread
       #   for queued submissions, see ../capa/display.coffee
@@ -162,17 +155,6 @@ class @Sequence
       old: @position
       new: new_position
       id: @id
-
-    analytics.pageview @id
-
-    # navigation using the next or previous arrow button.
-    tracking_messages =
-      seq_prev: "Accessed Previous Sequential"
-      seq_next: "Accessed Next Sequential"
-    analytics.track tracking_messages[direction],
-      sequence_id: @id
-      current_sequential: @position
-      target_sequential: new_position
 
     # If the bottom nav is used, scroll to the top of the page on change.
     if $(event.target).closest('nav[class="sequence-bottom"]').length > 0

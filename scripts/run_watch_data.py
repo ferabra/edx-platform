@@ -22,6 +22,7 @@ EXTENSIONS = ["*", "xml", "js", "css", "coffee", "scss", "html"]
 
 WATCH_DIRS = [os.path.abspath(os.path.normpath(dir)) for dir in WATCH_DIRS]
 
+
 class DjangoEventHandler(FileSystemEventHandler):
 
     def __init__(self, process):
@@ -37,7 +38,7 @@ class DjangoEventHandler(FileSystemEventHandler):
                 break
 
 if __name__ == "__main__":
-    event_handler = DjangoEventHandler(Popen(['rake', 'lms']))
+    event_handler = DjangoEventHandler(Popen(['paver', 'lms']))
     observer = Observer()
     for dir in WATCH_DIRS:
         observer.schedule(event_handler, dir, recursive=True)

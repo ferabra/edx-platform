@@ -2,24 +2,36 @@
 Staff view of courseware
 """
 from bok_choy.page_object import PageObject
+from .courseware import CoursewarePage
 
 
-class StaffPage(PageObject):
+class StaffPage(CoursewarePage):
     """
     View of courseware pages while logged in as course staff
     """
 
     url = None
+    PREVIEW_MENU_CSS = '.preview-menu'
+    VIEW_MODE_OPTIONS_CSS = '.preview-menu .action-preview-select option'
 
     def is_browser_on_page(self):
-        return self.q(css='#staffstatus').present
+        if not super(StaffPage, self).is_browser_on_page():
+            return False
+        return self.q(css=self.PREVIEW_MENU_CSS).present
 
     @property
-    def staff_status(self):
+    def staff_view_mode(self):
         """
-        Return the current status, either Staff view or Student view
+        Return the currently chosen view mode, e.g. "Staff", "Student" or a content group.
         """
-        return self.q(css='#staffstatus').text[0]
+        return self.q(css=self.VIEW_MODE_OPTIONS_CSS).filter(lambda el: el.is_selected()).first.text[0]
+
+    def set_staff_view_mode(self, view_mode):
+        """
+        Set the current view mode, e.g. "Staff", "Student" or a content group.
+        """
+        self.q(css=self.VIEW_MODE_OPTIONS_CSS).filter(lambda el: el.text == view_mode).first.click()
+        self.wait_for_ajax()
 
     def open_staff_debug_info(self):
         """

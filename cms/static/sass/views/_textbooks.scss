@@ -5,28 +5,13 @@
 
   .content-primary, .content-supplementary {
     @include box-sizing(border-box);
-    float: left;
   }
 
   .content-primary {
-    width: flex-grid(9, 12);
-    margin-right: flex-gutter();
+    @extend .ui-col-wide;
 
     .no-textbook-content {
-      @extend %ui-well;
-      padding: ($baseline*2);
-      background-color: $gray-l4;
-      text-align: center;
-      color: $gray;
-
-      .new-button {
-        @include font-size(14);
-        margin-left: $baseline;
-
-        [class^="icon-"] {
-          margin-right: ($baseline/2);
-        }
-      }
+      @extend %no-content;
     }
 
     .textbook {
@@ -43,20 +28,20 @@
 
         .textbook-title {
           @extend %t-title4;
-          margin-right: ($baseline*14);
-          font-weight: bold;
+          @extend %t-strong;
+          @include margin-right($baseline*14);
         }
 
         .ui-toggle-expansion {
           @include transition(rotate .15s ease-in-out .25s);
-          @include font-size(21);
+          @extend %t-action1;
           display: inline-block;
           width: ($baseline*0.75);
           vertical-align: text-bottom;
         }
 
         &.is-selectable {
-          cursor: pointer;
+          @extend %ui-fake-link;
 
           &:hover {
             color: $blue;
@@ -98,7 +83,7 @@
           opacity: 0.0;
           position: absolute;
           top: $baseline;
-          right: $baseline;
+          @include right($baseline);
 
           .action {
             display: inline-block;
@@ -160,21 +145,21 @@
 
         .action-primary {
           @include blue-button;
-          @extend %t-action2;
           @include transition(all .15s);
+          @extend %t-action2;
+          @extend %t-strong;
           display: inline-block;
           padding: ($baseline/5) $baseline;
-          font-weight: 600;
           text-transform: uppercase;
         }
 
         .action-secondary {
           @include grey-button;
-          @extend %t-action2;
           @include transition(all .15s);
+          @extend %t-action2;
+          @extend %t-strong;
           display: inline-block;
           padding: ($baseline/5) $baseline;
-          font-weight: 600;
           text-transform: uppercase;
         }
 
@@ -188,7 +173,7 @@
 
 
         strong {
-          font-weight: 600;
+          @extend %t-strong;
         }
 
 
@@ -208,7 +193,7 @@
           &.required {
 
             label {
-              font-weight: 600;
+              @extend %t-strong;
             }
 
             label:after {
@@ -318,9 +303,9 @@
             display: block;
             width: 46%;
             border-bottom: none;
-            margin: 0 ($baseline*0.75) 0 0;
+            @include margin(0, ($baseline*0.75), 0, 0);
             padding: ($baseline/4) 0 0 0;
-            float: left;
+            @include float(left);
             position: relative;
 
             input, textarea {
@@ -331,14 +316,14 @@
                 @extend %ui-btn-flat-outline;
                 position: absolute;
                 top: 3px;
-                right: 0;
+                @include right(0);
             }
 
           }
 
           .action-close {
-            @include transition(color 0.25s ease-in-out);
-            @include font-size(22);
+            @include transition(color $tmg-f2 ease-in-out);
+            @extend %t-action1;
             display: inline-block;
             float: right;
             margin-top: ($baseline*2);
@@ -357,17 +342,16 @@
 
       .action-add-chapter {
         @extend %ui-btn-flat-outline;
-        @include font-size(16);
+        @extend %t-action1;
         display: block;
         width: 100%;
         margin: ($baseline*1.5) 0 0 0;
         padding: ($baseline/2);
-        font-weight: 600;
       }
     }
   }
 }
   .content-supplementary {
-    width: flex-grid(3, 12);
+    @extend .ui-col-narrow;
   }
 }

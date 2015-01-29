@@ -5,7 +5,7 @@ so that we can run the lettuce acceptance tests.
 
 # We intentionally define lots of variables that aren't used, and
 # want to import all variables from base settings files
-# pylint: disable=W0401, W0614
+# pylint: disable=wildcard-import, unused-wildcard-import
 
 from .test import *
 from .sauce import *
@@ -19,6 +19,9 @@ SITE_NAME = 'localhost:{}'.format(LETTUCE_SERVER_PORT)
 import logging
 logging.basicConfig(filename=TEST_ROOT / "log" / "lms_acceptance.log", level=logging.ERROR)
 
+# set root logger level
+logging.getLogger().setLevel(logging.ERROR)
+
 import os
 from random import choice
 import string
@@ -27,10 +30,17 @@ import string
 def seed():
     return os.getppid()
 
-# Suppress error message "Cannot determine primary key of logged in user"
-# from track.middleware that gets triggered when using an auto_auth workflow
-# This is an ERROR level warning so we need to set the threshold at CRITICAL
-logging.getLogger('track.middleware').setLevel(logging.CRITICAL)
+# Silence noisy logs
+LOG_OVERRIDES = [
+    ('track.middleware', logging.CRITICAL),
+    ('codejail.safe_exec', logging.ERROR),
+    ('edx.courseware', logging.ERROR),
+    ('audit', logging.ERROR),
+    ('instructor_task.api_helper', logging.ERROR),
+]
+
+for log_name, log_level in LOG_OVERRIDES:
+    logging.getLogger(log_name).setLevel(log_level)
 
 update_module_store_settings(
     MODULESTORE,
@@ -40,7 +50,8 @@ update_module_store_settings(
     },
     module_store_options={
         'fs_root': TEST_ROOT / "data",
-    }
+    },
+    default_store=os.environ.get('DEFAULT_STORE', 'draft'),
 )
 CONTENTSTORE = {
     'ENGINE': 'xmodule.contentstore.mongo.MongoContentStore',
@@ -50,7 +61,7 @@ CONTENTSTORE = {
     }
 }
 
-# Set this up so that rake lms[acceptance] and running the
+# Set this up so that 'paver lms --settings=acceptance' and running the
 # harvest command both use the same (test) database
 # which they can flush without messing up your dev db
 DATABASES = {
@@ -80,12 +91,6 @@ EVENT_TRACKING_BACKENDS.update({
 })
 
 
-# Enable asset pipeline
-# Our fork of django-pipeline uses `PIPELINE` instead of `PIPELINE_ENABLED`
-# PipelineFinder is explained here: http://django-pipeline.readthedocs.org/en/1.1.24/storages.html
-PIPELINE = True
-STATICFILES_FINDERS += ('pipeline.finders.PipelineFinder', )
-
 BULK_EMAIL_DEFAULT_FROM_EMAIL = "test@test.org"
 
 # Forums are disabled in test.py to speed up unit tests, but we do not have
@@ -98,9 +103,18 @@ FEATURES['ENABLE_DISCUSSION_SERVICE'] = False
 # Use the auto_auth workflow for creating users and logging them in
 FEATURES['AUTOMATIC_AUTH_FOR_TESTING'] = True
 
-# Third-party auth is enabled in lms/envs/test.py for unittests, but we don't
-# yet want it for acceptance tests.
-FEATURES['ENABLE_THIRD_PARTY_AUTH'] = False
+# Enable third-party authentication
+FEATURES['ENABLE_THIRD_PARTY_AUTH'] = True
+THIRD_PARTY_AUTH = {
+    "Google": {
+        "SOCIAL_AUTH_GOOGLE_OAUTH2_KEY": "test",
+        "SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET": "test"
+    },
+    "Facebook": {
+        "SOCIAL_AUTH_FACEBOOK_KEY": "test",
+        "SOCIAL_AUTH_FACEBOOK_SECRET": "test"
+    }
+}
 
 # Enable fake payment processing page
 FEATURES['ENABLE_PAYMENT_FAKE'] = True
@@ -113,27 +127,12 @@ FEATURES['REQUIRE_COURSE_EMAIL_AUTH'] = False
 # verification.
 FEATURES['AUTOMATIC_VERIFY_STUDENT_IDENTITY_FOR_TESTING'] = True
 
-# Configure the payment processor to use the fake processing page
-# Since both the fake payment page and the shoppingcart app are using
-# the same settings, we can generate this randomly and guarantee
-# that they are using the same secret.
-RANDOM_SHARED_SECRET = ''.join(
-    choice(string.letters + string.digits + string.punctuation)
-    for x in range(250)
-)
-
-CC_PROCESSOR['CyberSource']['SHARED_SECRET'] = RANDOM_SHARED_SECRET
-CC_PROCESSOR['CyberSource']['MERCHANT_ID'] = "edx"
-CC_PROCESSOR['CyberSource']['SERIAL_NUMBER'] = "0123456789012345678901"
-CC_PROCESSOR['CyberSource']['PURCHASE_ENDPOINT'] = "/shoppingcart/payment_fake"
-
 # HACK
 # Setting this flag to false causes imports to not load correctly in the lettuce python files
 # We do not yet understand why this occurs. Setting this to true is a stopgap measure
 USE_I18N = True
 
-FEATURES['ENABLE_FEEDBACK_SUBMISSION'] = True
-FEEDBACK_SUBMISSION_EMAIL = 'dummy@example.com'
+FEATURES['ENABLE_FEEDBACK_SUBMISSION'] = False
 
 # Include the lettuce app for acceptance testing, including the 'harvest' django-admin command
 INSTALLED_APPS += ('lettuce.django',)
@@ -160,7 +159,7 @@ SELENIUM_GRID = {
 #####################################################################
 # See if the developer has any local overrides.
 try:
-    from .private import *  # pylint: disable=F0401
+    from .private import *  # pylint: disable=import-error
 except ImportError:
     pass
 
@@ -180,3 +179,7 @@ XQUEUE_INTERFACE = {
 YOUTUBE['API'] = "127.0.0.1:{0}/get_youtube_api/".format(YOUTUBE_PORT)
 YOUTUBE['TEST_URL'] = "127.0.0.1:{0}/test_youtube/".format(YOUTUBE_PORT)
 YOUTUBE['TEXT_API']['url'] = "127.0.0.1:{0}/test_transcripts_youtube/".format(YOUTUBE_PORT)
+
+if FEATURES.get('ENABLE_COURSEWARE_SEARCH'):
+    # Use MockSearchEngine as the search engine for test scenario
+    SEARCH_ENGINE = "search.tests.mock_search_engine.MockSearchEngine"

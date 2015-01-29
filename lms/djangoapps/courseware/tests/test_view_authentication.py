@@ -1,22 +1,13 @@
 import datetime
 import pytz
 
-from mock import patch
-
 from django.core.urlresolvers import reverse
 from django.test.utils import override_settings
+from mock import patch
 
-# Need access to internal func to put users in the right group
 from courseware.access import has_access
-
-from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
-
-from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
-
-from student.tests.factories import UserFactory, CourseEnrollmentFactory
-
-from courseware.tests.helpers import LoginEnrollmentTestCase, check_for_get_code
-from courseware.tests.modulestore_config import TEST_DATA_MIXED_MODULESTORE
+from courseware.tests.helpers import LoginEnrollmentTestCase
+from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE
 from courseware.tests.factories import (
     BetaTesterFactory,
     StaffFactory,
@@ -26,9 +17,12 @@ from courseware.tests.factories import (
     OrgInstructorFactory,
 )
 from xmodule.modulestore.django import modulestore
+from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
+from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
+from student.tests.factories import UserFactory, CourseEnrollmentFactory
 
 
-@override_settings(MODULESTORE=TEST_DATA_MIXED_MODULESTORE)
+@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
 class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
     """
     Check that view authentication works properly.
@@ -60,7 +54,7 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
         urls = [reverse('about_course', kwargs={'course_id': course.id.to_deprecated_string()}),
                 reverse('courses')]
         for url in urls:
-            check_for_get_code(self, 200, url)
+            self.assert_request_status_code(200, url)
 
     def _check_non_staff_dark(self, course):
         """
@@ -72,10 +66,10 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
         urls.extend([
             reverse('book', kwargs={'course_id': course.id.to_deprecated_string(),
                                     'book_index': index})
-            for index, book in enumerate(course.textbooks)
+            for index, __ in enumerate(course.textbooks)
         ])
         for url in urls:
-            check_for_get_code(self, 404, url)
+            self.assert_request_status_code(404, url)
 
     def _check_staff(self, course):
         """
@@ -89,7 +83,7 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
             for index in xrange(len(course.textbooks))
         ])
         for url in urls:
-            check_for_get_code(self, 200, url)
+            self.assert_request_status_code(200, url)
 
         # The student progress tab is not accessible to a student
         # before launch, so the instructor view-as-student feature
@@ -97,14 +91,18 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
         # TODO (vshnayder): If this is not the behavior we want, will need
         # to make access checking smarter and understand both the effective
         # user (the student), and the requesting user (the prof)
-        url = reverse('student_progress',
-                      kwargs={'course_id': course.id.to_deprecated_string(),
-                              'student_id': self.enrolled_user.id})
-        check_for_get_code(self, 404, url)
+        url = reverse(
+            'student_progress',
+            kwargs={
+                'course_id': course.id.to_deprecated_string(),
+                'student_id': self.enrolled_user.id,
+            }
+        )
+        self.assert_request_status_code(404, url)
 
         # The courseware url should redirect, not 200
         url = self._reverse_urls(['courseware'], course)[0]
-        check_for_get_code(self, 302, url)
+        self.assert_request_status_code(302, url)
 
     def login(self, user):
         return super(TestViewAuth, self).login(user.email, 'test')
@@ -128,7 +126,7 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
         )
         self.course = modulestore().get_course(self.course.id)
 
-        self.test_course = CourseFactory.create(number='666', display_name='Robot_Sub_Course')
+        self.test_course = CourseFactory.create(org=self.course.id.org)
         self.other_org_course = CourseFactory.create(org='Other_Org_Course')
         self.sub_courseware_chapter = ItemFactory.create(
             parent_location=self.test_course.location,
@@ -212,7 +210,7 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
 
         # Shouldn't be able to get to the instructor pages
         for url in urls:
-            check_for_get_code(self, 404, url)
+            self.assert_request_status_code(404, url)
 
     def test_staff_course_access(self):
         """
@@ -223,10 +221,10 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
 
         # Now should be able to get to self.course, but not  self.test_course
         url = reverse('instructor_dashboard', kwargs={'course_id': self.course.id.to_deprecated_string()})
-        check_for_get_code(self, 200, url)
+        self.assert_request_status_code(200, url)
 
         url = reverse('instructor_dashboard', kwargs={'course_id': self.test_course.id.to_deprecated_string()})
-        check_for_get_code(self, 404, url)
+        self.assert_request_status_code(404, url)
 
     def test_instructor_course_access(self):
         """
@@ -237,10 +235,10 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
 
         # Now should be able to get to self.course, but not  self.test_course
         url = reverse('instructor_dashboard', kwargs={'course_id': self.course.id.to_deprecated_string()})
-        check_for_get_code(self, 200, url)
+        self.assert_request_status_code(200, url)
 
         url = reverse('instructor_dashboard', kwargs={'course_id': self.test_course.id.to_deprecated_string()})
-        check_for_get_code(self, 404, url)
+        self.assert_request_status_code(404, url)
 
     def test_org_staff_access(self):
         """
@@ -249,13 +247,13 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
         """
         self.login(self.org_staff_user)
         url = reverse('instructor_dashboard', kwargs={'course_id': self.course.id.to_deprecated_string()})
-        check_for_get_code(self, 200, url)
+        self.assert_request_status_code(200, url)
 
         url = reverse('instructor_dashboard', kwargs={'course_id': self.test_course.id.to_deprecated_string()})
-        check_for_get_code(self, 200, url)
+        self.assert_request_status_code(200, url)
 
         url = reverse('instructor_dashboard', kwargs={'course_id': self.other_org_course.id.to_deprecated_string()})
-        check_for_get_code(self, 404, url)
+        self.assert_request_status_code(404, url)
 
     def test_org_instructor_access(self):
         """
@@ -264,13 +262,13 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
         """
         self.login(self.org_instructor_user)
         url = reverse('instructor_dashboard', kwargs={'course_id': self.course.id.to_deprecated_string()})
-        check_for_get_code(self, 200, url)
+        self.assert_request_status_code(200, url)
 
         url = reverse('instructor_dashboard', kwargs={'course_id': self.test_course.id.to_deprecated_string()})
-        check_for_get_code(self, 200, url)
+        self.assert_request_status_code(200, url)
 
         url = reverse('instructor_dashboard', kwargs={'course_id': self.other_org_course.id.to_deprecated_string()})
-        check_for_get_code(self, 404, url)
+        self.assert_request_status_code(404, url)
 
     def test_global_staff_access(self):
         """
@@ -283,7 +281,7 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
                 reverse('instructor_dashboard', kwargs={'course_id': self.test_course.id.to_deprecated_string()})]
 
         for url in urls:
-            check_for_get_code(self, 200, url)
+            self.assert_request_status_code(200, url)
 
     @patch.dict('courseware.access.settings.FEATURES', {'DISABLE_START_DATES': False})
     def test_dark_launch_enrolled_student(self):
@@ -391,9 +389,11 @@ class TestViewAuth(ModuleStoreTestCase, LoginEnrollmentTestCase):
         self.assertTrue(self.enroll(self.course))
 
 
-@override_settings(MODULESTORE=TEST_DATA_MIXED_MODULESTORE)
+@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
 class TestBetatesterAccess(ModuleStoreTestCase):
-
+    """
+    Tests for the beta tester feature
+    """
     def setUp(self):
 
         now = datetime.datetime.now(pytz.UTC)

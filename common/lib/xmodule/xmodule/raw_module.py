@@ -2,7 +2,6 @@ from lxml import etree
 from xmodule.editing_module import XMLEditingDescriptor
 from xmodule.xml_module import XmlDescriptor
 import logging
-import sys
 from xblock.fields import String, Scope
 from exceptions import SerializationError
 
@@ -28,10 +27,13 @@ class RawDescriptor(XmlDescriptor, XMLEditingDescriptor):
             # re-raise
             lines = self.data.split('\n')
             line, offset = err.position
-            msg = (u"Unable to create xml for module {loc}. "
-                   "Context: '{context}'".format(
-                   context=lines[line - 1][offset - 40:offset + 40],
-                   loc=self.location))
+            msg = (
+                u"Unable to create xml for module {loc}. "
+                u"Context: '{context}'"
+            ).format(
+                context=lines[line - 1][offset - 40:offset + 40],
+                loc=self.location,
+            )
             raise SerializationError(self.location, msg)
 
 

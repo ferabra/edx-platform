@@ -2,9 +2,9 @@
  * XBlockEditorView displays the authoring view of an xblock, and allows the user to switch between
  * the available modes.
  */
-define(["jquery", "underscore", "gettext", "js/views/feedback_notification", "js/views/xblock",
-        "js/views/metadata", "js/collections/metadata", "jquery.inputnumber"],
-    function ($, _, gettext, NotificationView, XBlockView, MetadataView, MetadataCollection) {
+define(["jquery", "underscore", "gettext", "js/views/xblock", "js/views/metadata", "js/collections/metadata",
+        "jquery.inputnumber"],
+    function ($, _, gettext, XBlockView, MetadataView, MetadataCollection) {
 
         var XBlockEditorView = XBlockView.extend({
             // takes XBlockInfo as a model
@@ -88,38 +88,24 @@ define(["jquery", "underscore", "gettext", "js/views/feedback_notification", "js
                 return this.metadataEditor;
             },
 
-            save: function(options) {
-                var xblockInfo = this.model,
-                    data,
-                    saving;
-                data = this.getXModuleData();
-                if (data) {
-                    saving = new NotificationView.Mini({
-                        title: gettext('Saving&hellip;')
-                    });
-                    saving.show();
-                    return xblockInfo.save(data).done(function() {
-                        var success = options.success;
-                        saving.hide();
-                        if (success) {
-                            success();
-                        }
-                    });
-                }
-            },
-
             /**
-             * Returns the data saved for the xmodule. Note that this *does not* work for XBlocks.
+             * Returns the updated field data for the xblock. Note that this works for all
+             * XModules as well as for XBlocks that provide a 'collectFieldData' API.
              */
-            getXModuleData: function() {
+            getXBlockFieldData: function() {
                 var xblock = this.xblock,
                     metadataEditor = this.getMetadataEditor(),
                     data = null;
-                if (xblock.save) {
+                // If the xblock supports returning its field data then collect it
+                if (xblock.collectFieldData) {
+                    data = xblock.collectFieldData();
+                // ... else if this is an XModule then call its save method
+                } else if (xblock.save) {
                     data = xblock.save();
                     if (metadataEditor) {
                         data.metadata = _.extend(data.metadata || {}, this.getChangedMetadata());
                     }
+                // ... else log an error
                 } else {
                     console.error('Cannot save xblock as it has no save method');
                 }

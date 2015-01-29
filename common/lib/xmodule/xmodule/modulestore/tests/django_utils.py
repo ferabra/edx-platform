@@ -1,44 +1,70 @@
+# encoding: utf-8
 """
 Modulestore configuration for test cases.
 """
-
+import datetime
+import pytz
+from tempfile import mkdtemp
 from uuid import uuid4
-from django.test import TestCase
+
+from mock import patch
+
+from django.conf import settings
 from django.contrib.auth.models import User
-from xmodule.modulestore.django import (
-    modulestore, clear_existing_modulestores, loc_mapper
-)
+from django.test import TestCase
+from request_cache.middleware import RequestCache
+
+from xmodule.contentstore.django import _CONTENTSTORE
 from xmodule.modulestore import ModuleStoreEnum
+from xmodule.modulestore.django import modulestore, clear_existing_modulestores
+from xmodule.modulestore.tests.mongo_connection import MONGO_PORT_NUM, MONGO_HOST
+from xmodule.modulestore.tests.sample_courses import default_block_info_tree, TOY_BLOCK_INFO_TREE
+from xmodule.tabs import CoursewareTab, CourseInfoTab, StaticTab, DiscussionTab, ProgressTab, WikiTab
 
 
-def mixed_store_config(data_dir, mappings):
+def mixed_store_config(data_dir, mappings, include_xml=False, xml_course_dirs=None):
     """
     Return a `MixedModuleStore` configuration, which provides
     access to both Mongo- and XML-backed courses.
 
-    `data_dir` is the directory from which to load XML-backed courses.
-    `mappings` is a dictionary mapping course IDs to modulestores, for example:
+    Args:
+        data_dir (string): the directory from which to load XML-backed courses.
+        mappings (string): a dictionary mapping course IDs to modulestores, for example:
 
-        {
-            'MITx/2.01x/2013_Spring': 'xml',
-            'edx/999/2013_Spring': 'default'
-        }
+            {
+                'MITx/2.01x/2013_Spring': 'xml',
+                'edx/999/2013_Spring': 'default'
+            }
 
-    where 'xml' and 'default' are the two options provided by this configuration,
-    mapping (respectively) to XML-backed and Mongo-backed modulestores..
+        where 'xml' and 'default' are the two options provided by this configuration,
+        mapping (respectively) to XML-backed and Mongo-backed modulestores..
+
+    Keyword Args:
+
+        include_xml (boolean): If True, include an XML modulestore in the configuration.
+        xml_course_dirs (list): The directories containing XML courses to load from disk.
+
+        note: For the courses to be loaded into the XML modulestore and accessible do the following:
+            * include_xml should be True
+            * xml_course_dirs should be the list of directories (relative to data_dir)
+                  containing the courses you want to load
+            * mappings should be configured, pointing the xml courses to the xml modulestore
+
     """
-    draft_mongo_config = draft_mongo_store_config(data_dir)
-    xml_config = xml_store_config(data_dir)
+    stores = [
+        draft_mongo_store_config(data_dir)['default'],
+        split_mongo_store_config(data_dir)['default']
+    ]
+
+    if include_xml:
+        stores.append(xml_store_config(data_dir, course_dirs=xml_course_dirs)['default'])
 
     store = {
         'default': {
             'ENGINE': 'xmodule.modulestore.mixed.MixedModuleStore',
             'OPTIONS': {
                 'mappings': mappings,
-                'stores': [
-                    draft_mongo_config['default'],
-                    xml_config['default']
-                ]
+                'stores': stores,
             }
         }
     }
@@ -61,9 +87,10 @@ def draft_mongo_store_config(data_dir):
             'NAME': 'draft',
             'ENGINE': 'xmodule.modulestore.mongo.draft.DraftModuleStore',
             'DOC_STORE_CONFIG': {
-                'host': 'localhost',
+                'host': MONGO_HOST,
+                'port': MONGO_PORT_NUM,
                 'db': 'test_xmodule',
-                'collection': 'modulestore{0}'.format(uuid4().hex[:5]),
+                'collection': 'modulestore_{0}'.format(uuid4().hex[:5]),
             },
             'OPTIONS': modulestore_options
         }
@@ -72,9 +99,39 @@ def draft_mongo_store_config(data_dir):
     return store
 
 
-def xml_store_config(data_dir):
+def split_mongo_store_config(data_dir):
+    """
+    Defines split module store.
+    """
+    modulestore_options = {
+        'default_class': 'xmodule.raw_module.RawDescriptor',
+        'fs_root': data_dir,
+        'render_template': 'edxmako.shortcuts.render_to_string',
+    }
+
+    store = {
+        'default': {
+            'NAME': 'draft',
+            'ENGINE': 'xmodule.modulestore.split_mongo.split_draft.DraftVersioningModuleStore',
+            'DOC_STORE_CONFIG': {
+                'host': MONGO_HOST,
+                'port': MONGO_PORT_NUM,
+                'db': 'test_xmodule',
+                'collection': 'modulestore_{0}'.format(uuid4().hex[:5]),
+            },
+            'OPTIONS': modulestore_options
+        }
+    }
+
+    return store
+
+
+def xml_store_config(data_dir, course_dirs=None):
     """
     Defines default module store using XMLModuleStore.
+
+    Note: you should pass in a list of course_dirs that you care about,
+    otherwise all courses in the data_dir will be processed.
     """
     store = {
         'default': {
@@ -83,11 +140,45 @@ def xml_store_config(data_dir):
             'OPTIONS': {
                 'data_dir': data_dir,
                 'default_class': 'xmodule.hidden_module.HiddenDescriptor',
+                'course_dirs': course_dirs,
             }
         }
     }
 
     return store
+
+TEST_DATA_DIR = settings.COMMON_TEST_DATA_ROOT
+
+# This is an XML only modulestore with only the toy course loaded
+TEST_DATA_XML_MODULESTORE = xml_store_config(TEST_DATA_DIR, course_dirs=['toy'])
+
+# This modulestore will provide both a mixed mongo editable modulestore, and
+# an XML store with just the toy course loaded.
+TEST_DATA_MIXED_TOY_MODULESTORE = mixed_store_config(
+    TEST_DATA_DIR, {'edX/toy/2012_Fall': 'xml', }, include_xml=True, xml_course_dirs=['toy']
+)
+
+# This modulestore will provide both a mixed mongo editable modulestore, and
+# an XML store with common/test/data/2014 loaded, which is a course that is closed.
+TEST_DATA_MIXED_CLOSED_MODULESTORE = mixed_store_config(
+    TEST_DATA_DIR, {'edX/detached_pages/2014': 'xml', }, include_xml=True, xml_course_dirs=['2014']
+)
+
+# This modulestore will provide both a mixed mongo editable modulestore, and
+# an XML store with common/test/data/graded loaded, which is a course that is graded.
+TEST_DATA_MIXED_GRADED_MODULESTORE = mixed_store_config(
+    TEST_DATA_DIR, {'edX/graded/2012_Fall': 'xml', }, include_xml=True, xml_course_dirs=['graded']
+)
+
+# All store requests now go through mixed
+# Use this modulestore if you specifically want to test mongo and not a mocked modulestore.
+# This modulestore definition below will not load any xml courses.
+TEST_DATA_MONGO_MODULESTORE = mixed_store_config(mkdtemp(), {}, include_xml=False)
+
+# Unit tests that are not specifically testing the modulestore implementation but just need course context can use a mocked modulestore.
+# Use this modulestore if you do not care about the underlying implementation.
+# TODO: acutally mock out the modulestore for this in a subsequent PR.
+TEST_DATA_MOCK_MODULESTORE = mixed_store_config(mkdtemp(), {}, include_xml=False)
 
 
 class ModuleStoreTestCase(TestCase):
@@ -187,31 +278,20 @@ class ModuleStoreTestCase(TestCase):
         return updated_course
 
     @staticmethod
-    def drop_mongo_collections(modulestore_type=ModuleStoreEnum.Type.mongo):
+    @patch('xmodule.modulestore.django.create_modulestore_instance')
+    def drop_mongo_collections(mock_create):
         """
         If using a Mongo-backed modulestore & contentstore, drop the collections.
         """
-        store = modulestore()
-        if hasattr(store, '_get_modulestore_by_type'):
-            store = store._get_modulestore_by_type(modulestore_type)  # pylint: disable=W0212
-        if hasattr(store, 'collection'):
-            connection = store.collection.database.connection
-            store.collection.drop()
-            connection.close()
-        elif hasattr(store, 'close_all_connections'):
-            store.close_all_connections()
-        elif hasattr(store, 'db'):
-            connection = store.db.connection
-            connection.drop_database(store.db.name)
-            connection.close()
+        # Do not create the modulestore if it does not exist.
+        mock_create.return_value = None
 
-        if hasattr(store, 'contentstore'):
-            store.contentstore.drop_database()
-
-        location_mapper = loc_mapper()
-        if location_mapper.db:
-            location_mapper.location_map.drop()
-            location_mapper.db.connection.close()
+        module_store = modulestore()
+        if hasattr(module_store, '_drop_database'):
+            module_store._drop_database()  # pylint: disable=protected-access
+        _CONTENTSTORE.clear()
+        if hasattr(module_store, 'close_connections'):
+            module_store.close_connections()
 
     @classmethod
     def setUpClass(cls):
@@ -224,30 +304,12 @@ class ModuleStoreTestCase(TestCase):
         clear_existing_modulestores()
         TestCase.setUpClass()
 
-    @classmethod
-    def tearDownClass(cls):
-        """
-        Drop the existing modulestores, causing them to be reloaded.
-        Clean up any data stored in Mongo.
-        """
-        # Clean up by flushing the Mongo modulestore
-        cls.drop_mongo_collections()
-
-        # Clear out the existing modulestores,
-        # which will cause them to be re-created
-        # the next time they are accessed.
-        # We do this at *both* setup and teardown just to be safe.
-        clear_existing_modulestores()
-
-        TestCase.tearDownClass()
-
     def _pre_setup(self):
         """
         Flush the ModuleStore.
         """
-
         # Flush the Mongo modulestore
-        ModuleStoreTestCase.drop_mongo_collections()
+        self.drop_mongo_collections()
 
         # Call superclass implementation
         super(ModuleStoreTestCase, self)._pre_setup()
@@ -256,7 +318,113 @@ class ModuleStoreTestCase(TestCase):
         """
         Flush the ModuleStore after each test.
         """
-        ModuleStoreTestCase.drop_mongo_collections()
+        self.drop_mongo_collections()
+        # Clear out the existing modulestores,
+        # which will cause them to be re-created
+        # the next time they are accessed.
+        # We do this at *both* setup and teardown just to be safe.
+        clear_existing_modulestores()
+        # clear RequestCache to emulate its clearance after each http request.
+        RequestCache().clear_request_cache()
 
         # Call superclass implementation
         super(ModuleStoreTestCase, self)._post_teardown()
+
+    def create_sample_course(self, org, course, run, block_info_tree=None, course_fields=None):
+        """
+        create a course in the default modulestore from the collection of BlockInfo
+        records defining the course tree
+        Returns:
+            course_loc: the CourseKey for the created course
+        """
+        if block_info_tree is None:
+            block_info_tree = default_block_info_tree
+
+        with self.store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, None):
+            course = self.store.create_course(org, course, run, self.user.id, fields=course_fields)
+            self.course_loc = course.location  # pylint: disable=attribute-defined-outside-init
+
+            def create_sub_tree(parent_loc, block_info):
+                """Recursively creates a sub_tree on this parent_loc with this block."""
+                block = self.store.create_child(
+                    self.user.id,
+                    # TODO remove version_agnostic() when we impl the single transaction
+                    parent_loc.version_agnostic(),
+                    block_info.category, block_id=block_info.block_id,
+                    fields=block_info.fields,
+                )
+                for tree in block_info.sub_tree:
+                    create_sub_tree(block.location, tree)
+                setattr(self, block_info.block_id, block.location.version_agnostic())
+
+            for tree in block_info_tree:
+                create_sub_tree(self.course_loc, tree)
+
+            # remove version_agnostic when bulk write works
+            self.store.publish(self.course_loc.version_agnostic(), self.user.id)
+        return self.course_loc.course_key.version_agnostic()
+
+    def create_toy_course(self, org='edX', course='toy', run='2012_Fall'):
+        """
+        Create an equivalent to the toy xml course
+        """
+#        with self.store.bulk_operations(self.store.make_course_key(org, course, run)):
+        self.toy_loc = self.create_sample_course(  # pylint: disable=attribute-defined-outside-init
+            org, course, run, TOY_BLOCK_INFO_TREE,
+            {
+                "textbooks": [["Textbook", "https://s3.amazonaws.com/edx-textbooks/guttag_computation_v3/"]],
+                "wiki_slug": "toy",
+                "display_name": "Toy Course",
+                "graded": True,
+                "tabs": [
+                    CoursewareTab(),
+                    CourseInfoTab(),
+                    StaticTab(name="Syllabus", url_slug="syllabus"),
+                    StaticTab(name="Resources", url_slug="resources"),
+                    DiscussionTab(),
+                    WikiTab(),
+                    ProgressTab(),
+                ],
+                "discussion_topics": {"General": {"id": "i4x-edX-toy-course-2012_Fall"}},
+                "graceperiod": datetime.timedelta(days=2, seconds=21599),
+                "start": datetime.datetime(2015, 07, 17, 12, tzinfo=pytz.utc),
+                "xml_attributes": {"filename": ["course/2012_Fall.xml", "course/2012_Fall.xml"]},
+                "pdf_textbooks": [
+                    {
+                        "tab_title": "Sample Multi Chapter Textbook",
+                        "id": "MyTextbook",
+                        "chapters": [
+                            {"url": "/static/Chapter1.pdf", "title": "Chapter 1"},
+                            {"url": "/static/Chapter2.pdf", "title": "Chapter 2"}
+                        ]
+                    }
+                ],
+                "course_image": "just_a_test.jpg",
+            }
+        )
+        with self.store.branch_setting(ModuleStoreEnum.Branch.draft_preferred, self.toy_loc):
+            self.store.create_item(
+                self.user.id, self.toy_loc, "about", block_id="short_description",
+                fields={"data": "A course about toys."}
+            )
+            self.store.create_item(
+                self.user.id, self.toy_loc, "about", block_id="effort",
+                fields={"data": "6 hours"}
+            )
+            self.store.create_item(
+                self.user.id, self.toy_loc, "about", block_id="end_date",
+                fields={"data": "TBD"}
+            )
+            self.store.create_item(
+                self.user.id, self.toy_loc, "course_info", "handouts",
+                fields={"data": "<a href='/static/handouts/sample_handout.txt'>Sample</a>"}
+            )
+            self.store.create_item(
+                self.user.id, self.toy_loc, "static_tab", "resources",
+                fields={"display_name": "Resources"},
+            )
+            self.store.create_item(
+                self.user.id, self.toy_loc, "static_tab", "syllabus",
+                fields={"display_name": "Syllabus"},
+            )
+        return self.toy_loc

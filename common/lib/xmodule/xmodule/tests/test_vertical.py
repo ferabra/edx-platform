@@ -27,15 +27,7 @@ class BaseVerticalModuleTest(XModuleXmlImportTest):
         course_seq = self.course.get_children()[0]
         self.module_system = get_test_system()
 
-        def get_module(descriptor):
-            """Mocks module_system get_module function"""
-            module_system = get_test_system()
-            module_system.get_module = get_module
-            descriptor.bind_for_student(module_system, descriptor._field_data)  # pylint: disable=protected-access
-            return descriptor
-
-        self.module_system.get_module = get_module
-        self.module_system.descriptor_system = self.course.runtime
+        self.module_system.descriptor_runtime = self.course.runtime._descriptor_system  # pylint: disable=protected-access
         self.course.runtime.export_fs = MemoryFS()
 
         self.vertical = course_seq.get_children()[0]
@@ -57,7 +49,7 @@ class VerticalModuleTestCase(BaseVerticalModuleTest):
         """
         # Vertical shouldn't render children on the unit page
         context = {
-            'container_view': False,
+            'is_unit_page': True
         }
         html = self.module_system.render(self.vertical, AUTHOR_VIEW, context).content
         self.assertNotIn(self.test_html_1, html)
@@ -66,7 +58,7 @@ class VerticalModuleTestCase(BaseVerticalModuleTest):
         # Vertical should render reorderable children on the container page
         reorderable_items = set()
         context = {
-            'container_view': True,
+            'is_unit_page': False,
             'reorderable_items': reorderable_items,
         }
         html = self.module_system.render(self.vertical, AUTHOR_VIEW, context).content

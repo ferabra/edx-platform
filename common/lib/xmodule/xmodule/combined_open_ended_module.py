@@ -204,11 +204,11 @@ class CombinedOpenEndedFields(object):
         scope=Scope.user_state
     )
     old_task_states = List(
-        help=_("A list of lists of state dictionaries for student states that are saved."
-               "This field is only populated if the instructor changes tasks after"
-               "the module is created and students have attempted it (for example changes a self assessed problem to "
-               "self and peer assessed."),
-        scope = Scope.user_state
+        help=_("A list of lists of state dictionaries for student states that are saved. "
+               "This field is only populated if the instructor changes tasks after "
+               "the module is created and students have attempted it (for example, if a self assessed problem is "
+               "changed to self and peer assessed)."),
+        scope=Scope.user_state,
     )
     task_states = List(
         help=_("List of state dictionaries of each task within this module."),
@@ -240,7 +240,7 @@ class CombinedOpenEndedFields(object):
         help=_("The number of times the student can try to answer this problem."),
         default=1,
         scope=Scope.settings,
-        values={"min": 1 }
+        values={"min": 1}
     )
     accept_file_upload = Boolean(
         display_name=_("Allow File Uploads"),
@@ -259,10 +259,12 @@ class CombinedOpenEndedFields(object):
         scope=Scope.settings
     )
     extended_due = Date(
-        help=_("Date that this problem is due by for a particular student. This "
-             "can be set by an instructor, and will override the global due "
-             "date if it is set to a date that is later than the global due "
-             "date."),
+        help=_(
+            "Date that this problem is due by for a particular student. This "
+            "can be set by an instructor, and will override the global due "
+            "date if it is set to a date that is later than the global due "
+            "date."
+        ),
         default=None,
         scope=Scope.user_state,
     )
@@ -315,9 +317,11 @@ class CombinedOpenEndedFields(object):
     )
     peer_grade_finished_submissions_when_none_pending = Boolean(
         display_name=_('Allow "overgrading" of peer submissions'),
-        help=_("EXPERIMENTAL FEATURE.  Allow students to peer grade submissions that already have the requisite number of graders, "
-              "but ONLY WHEN all submissions they are eligible to grade already have enough graders.  "
-              "This is intended for use when settings for `Required Peer Grading` > `Peer Graders per Response`"),
+        help=_(
+            "EXPERIMENTAL FEATURE.  Allow students to peer grade submissions that already have the requisite number of graders, "
+            "but ONLY WHEN all submissions they are eligible to grade already have enough graders.  "
+            "This is intended for use when settings for `Required Peer Grading` > `Peer Graders per Response`"
+        ),
         default=False,
         scope=Scope.settings,
     )
@@ -496,8 +500,6 @@ class CombinedOpenEndedDescriptor(CombinedOpenEndedFields, RawDescriptor):
 
     #Specify whether or not to pass in open ended interface
     needs_open_ended_interface = True
-
-    metadata_attributes = RawDescriptor.metadata_attributes
 
     js = {'coffee': [resource_string(__name__, 'js/src/combinedopenended/edit.coffee')]}
     js_module_name = "OpenEndedMarkdownEditingDescriptor"

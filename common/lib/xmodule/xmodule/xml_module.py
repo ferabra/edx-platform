@@ -123,19 +123,8 @@ class XmlDescriptor(XModuleDescriptor):
     # Note -- url_name isn't in this list because it's handled specially on
     # import and export.
 
-    # TODO (vshnayder): Do we need a list of metadata we actually
-    # understand?  And if we do, is this the place?
-    # Related: What's the right behavior for clean_metadata?
-    metadata_attributes = ('format', 'graceperiod', 'showanswer', 'rerandomize',
-                           'start', 'due', 'graded', 'display_name', 'url_name', 'hide_from_toc',
-                           'ispublic',  # if True, then course is listed for all users; see
-                           'xqa_key',  # for xqaa server access
-                           'giturl',  # url of git server for origin of file
-                           # VS[compat] Remove once unused.
-                           'name', 'slug')
-
     metadata_to_strip = ('data_dir',
-                         'tabs', 'grading_policy', 'published_by', 'published_date',
+                         'tabs', 'grading_policy',
                          'discussion_blackouts',
                          # VS[compat] -- remove the below attrs once everything is in the CMS
                          'course', 'org', 'url_name', 'filename',
@@ -157,12 +146,12 @@ class XmlDescriptor(XModuleDescriptor):
     @classmethod
     def clean_metadata_from_xml(cls, xml_object):
         """
-        Remove any attribute named in cls.metadata_attributes from the supplied
+        Remove any attribute named for a field with scope Scope.settings from the supplied
         xml_object
         """
-        for attr in cls.metadata_attributes:
-            if xml_object.get(attr) is not None:
-                del xml_object.attrib[attr]
+        for field_name, field in cls.fields.items():
+            if field.scope == Scope.settings and xml_object.get(field_name) is not None:
+                del xml_object.attrib[field_name]
 
     @classmethod
     def file_to_xml(cls, file_object):
@@ -192,10 +181,18 @@ class XmlDescriptor(XModuleDescriptor):
             raise Exception, msg, sys.exc_info()[2]
 
     @classmethod
-    def load_definition(cls, xml_object, system, def_id):
-        '''Load a descriptor definition from the specified xml_object.
+    def load_definition(cls, xml_object, system, def_id, id_generator):
+        '''
+        Load a descriptor definition from the specified xml_object.
         Subclasses should not need to override this except in special
-        cases (e.g. html module)'''
+        cases (e.g. html module)
+
+        Args:
+            xml_object: an lxml.etree._Element containing the definition to load
+            system: the modulestore system (aka, runtime) which accesses data and provides access to services
+            def_id: the definition id for the block--used to compute the usage id and asides ids
+            id_generator: used to generate the usage_id
+        '''
 
         # VS[compat] -- the filename attr should go away once everything is
         # converted.  (note: make sure html files still work once this goes away)
@@ -219,6 +216,11 @@ class XmlDescriptor(XModuleDescriptor):
                         break
 
             definition_xml = cls.load_file(filepath, system.resources_fs, def_id)
+            usage_id = id_generator.create_usage(def_id)
+            system.parse_asides(definition_xml, def_id, usage_id, id_generator)
+
+            # Add the attributes from the pointer node
+            definition_xml.attrib.update(xml_object.attrib)
 
         definition_metadata = get_metadata_from_xml(definition_xml)
         cls.clean_metadata_from_xml(definition_xml)
@@ -289,11 +291,12 @@ class XmlDescriptor(XModuleDescriptor):
             # read the actual definition file--named using url_name.replace(':','/')
             filepath = cls._format_filepath(xml_object.tag, name_to_pathname(url_name))
             definition_xml = cls.load_file(filepath, system.resources_fs, def_id)
+            system.parse_asides(definition_xml, def_id, usage_id, id_generator)
         else:
             definition_xml = xml_object
             filepath = None
 
-        definition, children = cls.load_definition(definition_xml, system, def_id)  # note this removes metadata
+        definition, children = cls.load_definition(definition_xml, system, def_id, id_generator)  # note this removes metadata
 
         # VS[compat] -- make Ike's github preview links work in both old and
         # new file layouts
@@ -389,15 +392,15 @@ class XmlDescriptor(XModuleDescriptor):
 
         for key, value in self.xml_attributes.items():
             if key not in self.metadata_to_strip:
-                xml_object.set(key, value)
+                xml_object.set(key, serialize_field(value))
 
         if self.export_to_file():
             # Write the definition to a file
             url_path = name_to_pathname(self.url_name)
             filepath = self._format_filepath(self.category, url_path)
             resource_fs.makedir(os.path.dirname(filepath), recursive=True, allow_recreate=True)
-            with resource_fs.open(filepath, 'w') as file:
-                file.write(etree.tostring(xml_object, pretty_print=True, encoding='utf-8'))
+            with resource_fs.open(filepath, 'w') as fileobj:
+                fileobj.write(etree.tostring(xml_object, pretty_print=True, encoding='utf-8'))
 
             # And return just a pointer with the category and filename.
             record_object = etree.Element(self.category)

@@ -23,21 +23,21 @@
   }
 
   h3 {
-      font-size: 19px;
-      font-weight: 700;
+    @extend %t-title5;
+    @extend %t-strong;
   }
 
   .export-git-info-block {
 
     dt {
-      font-size: 19px;
-      font-weight: 700;
+      @extend %t-copy-lead1;
+      @extend %t-strong;
       margin-top: 12px;
     }
 
     dd {
-      font-size: 17px;
-      margin-bottom: 20px;
+      @extend %t-copy-base;
+      margin-bottom: $baseline;
     }
 
     .course_text {
@@ -76,7 +76,7 @@
 
     .action {
 
-      [class^="icon"] {
+      .icon {
         @extend %t-icon2;
         display: inline-block;
         vertical-align: middle;

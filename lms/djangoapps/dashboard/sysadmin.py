@@ -167,7 +167,7 @@ class Users(SysadminDashboardView):
 
         msg = u''
         if settings.FEATURES['AUTH_USE_CERTIFICATES']:
-            if not '@' in uname:
+            if '@' not in uname:
                 email = '{0}@{1}'.format(uname, email_domain)
             else:
                 email = uname
@@ -190,7 +190,7 @@ class Users(SysadminDashboardView):
 
             email = uname
 
-            if not '@' in email:
+            if '@' not in email:
                 msg += _('email address required (not username)')
                 return msg
             new_password = password
@@ -425,7 +425,7 @@ class Courses(SysadminDashboardView):
             color = 'blue'
 
         msg = u"<h4 style='color:{0}'>{1}</h4>".format(color, msg_header)
-        msg += "<pre>{0}</pre>".format(escape(ret))
+        msg += u"<pre>{0}</pre>".format(escape(ret))
         return msg
 
     def import_xml_course(self, gitloc, branch):

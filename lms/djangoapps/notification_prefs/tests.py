@@ -11,18 +11,14 @@ from mock import Mock, patch
 from notification_prefs import NOTIFICATION_PREF_KEY
 from notification_prefs.views import ajax_enable, ajax_disable, ajax_status, set_subscription, UsernameCipher
 from student.tests.factories import UserFactory
-from user_api.models import UserPreference
+from edxmako.tests import mako_middleware_process_request
+from openedx.core.djangoapps.user_api.models import UserPreference
 from util.testing import UrlResetMixin
 
 
 @override_settings(SECRET_KEY="test secret key")
 class NotificationPrefViewTest(UrlResetMixin, TestCase):
     INITIALIZATION_VECTOR = "\x00" * 16
-
-    @classmethod
-    def setUpClass(cls):
-        # Make sure global state is set up appropriately
-        Client().get("/")
 
     @patch.dict("django.conf.settings.FEATURES", {"ENABLE_DISCUSSION_SERVICE": True})
     def setUp(self):
@@ -71,7 +67,7 @@ class NotificationPrefViewTest(UrlResetMixin, TestCase):
         request.user = self.user
         response = ajax_status(request)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.content), {"status":0})
+        self.assertEqual(json.loads(response.content), {"status": 0})
 
     def test_ajax_status_get_1(self):
         self.create_prefs()
@@ -79,7 +75,7 @@ class NotificationPrefViewTest(UrlResetMixin, TestCase):
         request.user = self.user
         response = ajax_status(request)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.content), {"status":1})
+        self.assertEqual(json.loads(response.content), {"status": 1})
 
     def test_ajax_status_post(self):
         request = self.request_factory.post("dummy")
@@ -220,6 +216,8 @@ class NotificationPrefViewTest(UrlResetMixin, TestCase):
         def test_user(user):
             request = self.request_factory.get("dummy")
             request.user = AnonymousUser()
+
+            mako_middleware_process_request(request)
             response = set_subscription(request, self.tokens[user], subscribe=False)
             self.assertEqual(response.status_code, 200)
             self.assertNotPrefExists(user)
@@ -231,6 +229,8 @@ class NotificationPrefViewTest(UrlResetMixin, TestCase):
         self.create_prefs()
         request = self.request_factory.get("dummy")
         request.user = AnonymousUser()
+
+        mako_middleware_process_request(request)
         set_subscription(request, self.tokens[self.user], False)
         response = set_subscription(request, self.tokens[self.user], subscribe=False)
         self.assertEqual(response.status_code, 200)
@@ -242,6 +242,8 @@ class NotificationPrefViewTest(UrlResetMixin, TestCase):
             self.assertFalse(UserPreference.objects.filter(user=user, key=NOTIFICATION_PREF_KEY))
             request = self.request_factory.get("dummy")
             request.user = AnonymousUser()
+
+            mako_middleware_process_request(request)
             response = set_subscription(request, self.tokens[user], subscribe=True)
             self.assertEqual(response.status_code, 200)
             self.assertPrefValid(user)

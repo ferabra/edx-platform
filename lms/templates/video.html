@@ -85,8 +85,7 @@
                       <a href="#" class="quality-control is-hidden" title="${_('HD off')}" role="button" aria-disabled="false">${_('HD off')}</a>
 
                       <div class="lang menu-container">
-                        <a href="#" class="hide-subtitles" title="${_('Turn off captions')}" role="button" aria-
-                        disabled="false">${_('Turn off captions')}</a>
+                        <a href="#" class="hide-subtitles" title="${_('Turn off captions')}" role="button" aria-disabled="false">${_('Turn off captions')}</a>
                       </div>
                   </div>
               </div>
@@ -122,8 +121,8 @@
                   % else:
                   <li class="a11y-menu-item">
                   % endif
-		      ## This is necessary so we don't scrape 'display_name' as a string.
-		      <% dname = item['display_name'] %>
+                  ## This is necessary so we don't scrape 'display_name' as a string.
+                  <% dname = item['display_name'] %>
                       <a class="a11y-menu-item-link" href="#${item['value']}" title="${_(dname)}" data-value="${item['value']}">
                         ${_(dname)}
                       </a>
@@ -141,6 +140,13 @@
         <li class="video-handout video-download-button">
             ${('<a href="%s" target="_blank">' + _('Download Handout') + '</a>') % handout}
         </li>
+    % endif
+
+    % if branding_info:
+      <li id="branding" class="branding">
+        <span class="host-tag">${branding_info['logo_tag']}</span>
+        <a href="${branding_info['url']}" target="_blank" title="${branding_info['logo_tag']}"><img class="brand-logo" src="${branding_info['logo_src']}" alt="${branding_info['logo_tag']}" /></a>
+      </li>
     % endif
   </ul>
 </div>

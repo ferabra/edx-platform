@@ -1,17 +1,30 @@
 define([
-    'backbone', 'underscore', 'gettext', 'js/models/group',
+    'backbone', 'underscore', 'underscore.string', 'gettext', 'js/models/group',
     'js/collections/group', 'backbone.associations', 'coffee/src/main'
 ],
-function(Backbone, _, gettext, GroupModel, GroupCollection) {
+function(Backbone, _, str, gettext, GroupModel, GroupCollection) {
     'use strict';
+    _.str = str;
     var GroupConfiguration = Backbone.AssociatedModel.extend({
         defaults: function() {
             return {
-                id: null,
                 name: '',
+                scheme: 'random',
                 description: '',
-                groups: new GroupCollection([{}, {}]),
-                showGroups: false
+                version: 2,
+                groups: new GroupCollection([
+                    {
+                        name: gettext('Group A'),
+                        order: 0
+                    },
+                    {
+                        name: gettext('Group B'),
+                        order: 1
+                    }
+                ]),
+                showGroups: false,
+                editing: false,
+                usage: []
             };
         },
 
@@ -22,22 +35,23 @@ function(Backbone, _, gettext, GroupModel, GroupCollection) {
             collectionType: GroupCollection
         }],
 
-        initialize: function() {
+        initialize: function(attributes, options) {
+            this.canBeEmpty = options && options.canBeEmpty;
             this.setOriginalAttributes();
             return this;
         },
 
         setOriginalAttributes: function() {
-            this._originalAttributes = this.toJSON();
+            this._originalAttributes = this.parse(this.toJSON());
         },
 
         reset: function() {
-            this.set(this._originalAttributes);
+            this.set(this._originalAttributes, { parse: true, validate: true });
         },
 
         isDirty: function() {
             return !_.isEqual(
-                this._originalAttributes, this.toJSON()
+                this._originalAttributes, this.parse(this.toJSON())
             );
         },
 
@@ -45,43 +59,69 @@ function(Backbone, _, gettext, GroupModel, GroupCollection) {
             return !this.get('name') && this.get('groups').isEmpty();
         },
 
+        parse: function(response) {
+            var attrs = $.extend(true, {}, response);
+
+            _.each(attrs.groups, function(group, index) {
+                group.order = group.order || index;
+            });
+
+            return attrs;
+        },
+
         toJSON: function() {
             return {
                 id: this.get('id'),
                 name: this.get('name'),
+                scheme: this.get('scheme'),
                 description: this.get('description'),
+                version: this.get('version'),
                 groups: this.get('groups').toJSON()
             };
         },
 
         validate: function(attrs) {
-            if (!attrs.name) {
+            if (!_.str.trim(attrs.name)) {
                 return {
-                    message: gettext('Group Configuration name is required'),
+                    message: gettext('Group Configuration name is required.'),
                     attributes: {name: true}
                 };
             }
-            if (attrs.groups.length === 0) {
+
+            if (!this.canBeEmpty && attrs.groups.length < 1) {
                 return {
-                    message: gettext('Please add at least one group'),
-                    attributes: {groups: true}
+                    message: gettext('There must be at least one group.'),
+                    attributes: { groups: true }
                 };
             } else {
                 // validate all groups
-                var invalidGroups = [];
+                var validGroups = new Backbone.Collection(),
+                    invalidGroups = new Backbone.Collection();
                 attrs.groups.each(function(group) {
-                    if(!group.isValid()) {
-                        invalidGroups.push(group);
+                    if (!group.isValid()) {
+                        invalidGroups.add(group);
+                    } else {
+                        validGroups.add(group);
                     }
                 });
-                if (!_.isEmpty(invalidGroups)) {
+
+                if (!invalidGroups.isEmpty()) {
                     return {
-                        message: gettext('All groups must have a name'),
-                        attributes: {groups: invalidGroups}
+                        message: gettext('All groups must have a name.'),
+                        attributes: { groups: invalidGroups.toJSON() }
+                    };
+                }
+
+                var groupNames = validGroups.map(function(group) { return group.get('name'); });
+                if (groupNames.length !== _.uniq(groupNames).length) {
+                    return {
+                        message: gettext('All groups must have a unique name.'),
+                        attributes: { groups: validGroups.toJSON() }
                     };
                 }
             }
         }
     });
+
     return GroupConfiguration;
 });

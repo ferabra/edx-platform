@@ -1,4 +1,4 @@
-# pylint: disable=C0111
+# pylint: disable=missing-docstring
 
 from lettuce import world, step
 from selenium.webdriver.common.keys import Keys
@@ -20,9 +20,10 @@ SELECTORS = {
 # We should wait 300 ms for event handler invocation + 200ms for safety.
 DELAY = 0.5
 
+
 @step('youtube stub server (.*) YouTube API')
 def configure_youtube_api(_step, action):
-    action=action.strip()
+    action = action.strip()
     if action == 'proxies':
         world.youtube.config['youtube_api_blocked'] = False
     elif action == 'blocks':
@@ -30,12 +31,12 @@ def configure_youtube_api(_step, action):
     else:
         raise ValueError('Parameter `action` should be one of "proxies" or "blocks".')
 
-@step('I have created a Video component$')
-def i_created_a_video_component(_step):
 
-    world.create_course_with_unit()
+@step('I have created a Video component$')
+def i_created_a_video_component(step):
+    step.given('I am in Studio editing a new unit')
     world.create_component_instance(
-        step=_step,
+        step=step,
         category='video',
     )
 
@@ -47,6 +48,7 @@ def i_created_a_video_component(_step):
     world.wait_for_invisible(SELECTORS['spinner'])
     if not world.youtube.config.get('youtube_api_blocked'):
         world.wait_for_visible(SELECTORS['controls'])
+
 
 @step('I have created a Video component with subtitles$')
 def i_created_a_video_with_subs(_step):
@@ -139,7 +141,7 @@ def xml_only_video(step):
     course = world.scenario_dict['COURSE']
     store = modulestore()
 
-    parent_location = store.get_items(course.id, category='vertical')[0].location
+    parent_location = store.get_items(course.id, qualifiers={'category': 'vertical'})[0].location
 
     youtube_id = 'ABCDEFG'
     world.scenario_dict['YOUTUBE_ID'] = youtube_id
@@ -152,6 +154,7 @@ def xml_only_video(step):
         category='video',
         data='<video youtube="1.00:%s"></video>' % youtube_id,
         modulestore=store,
+        user_id=world.scenario_dict["USER"].id
     )
 
 
@@ -221,7 +224,7 @@ def see_a_range_slider_with_proper_range(_step):
 def do_not_see_or_not_button_video(_step, action, button_type):
     world.wait(DELAY)
     world.wait_for_ajax_complete()
-    action=action.strip()
+    action = action.strip()
     button = button_type.strip()
     if action == 'do not':
         assert not world.is_css_present(VIDEO_BUTTONS[button])

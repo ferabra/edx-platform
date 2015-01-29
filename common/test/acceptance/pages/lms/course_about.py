@@ -3,7 +3,7 @@ Course about page (with registration button)
 """
 
 from .course_page import CoursePage
-from .register import RegisterPage
+from .login_and_register import RegisterPage
 
 
 class CourseAboutPage(CoursePage):
@@ -15,7 +15,6 @@ class CourseAboutPage(CoursePage):
 
     def is_browser_on_page(self):
         return self.q(css='section.course-info').present
-
 
     def register(self):
         """

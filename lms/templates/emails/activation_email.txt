@@ -40,7 +40,7 @@ ${_("This email was automatically sent by {site_name} because someone "
 ${_("If you didn't request this, you don't need to do anything; you won't "
       "receive any more email from us. Please do not reply to this e-mail; "
       "if you require assistance, check the about section of the "
-      "{platform_name} Courses web site.").format(platform_name=settings.PLATFORM_NAME)}
+      "{platform_name} Courses web site or write us to support@e-huesped.org.").format(platform_name=settings.PLATFORM_NAME)}
 
 % else:
 ${_("If you didn't request this, you don't need to do anything; you won't "

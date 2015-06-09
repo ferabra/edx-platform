@@ -2429,7 +2429,7 @@ msgstr ""
 #: lms/templates/static_templates/about.html
 #: lms/templates/static_templates/about.html
 msgid "About"
-msgstr ""
+msgstr "Sobre"
 
 #: common/lib/xmodule/xmodule/course_module.py
 msgid "Entrance Exam Enabled"

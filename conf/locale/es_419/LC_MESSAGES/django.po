@@ -21396,3 +21396,6 @@ msgid ""
 msgstr ""
 "Una nueva revisión ha sido creada: Fusión entre la revisión #%(r1)d y la "
 "revisión #%(r2)d"
+
+msgid "About E-Huesped"
+msgstr "Acerca de E-Huesped"

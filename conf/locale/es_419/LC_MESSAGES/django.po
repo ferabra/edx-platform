@@ -9662,8 +9662,6 @@ msgid ""
 msgstr ""
 "EdX, Open edX, y los logos de edX y Open edX son marcas registradas de "
 "{link_start}edX Inc.{link_end}"
-<<<<<<< HEAD
-=======
 
 #. Translators: {date} will be an abbreviated date, indicating when the
 #. privacy
@@ -9671,28 +9669,7 @@ msgstr ""
 #: lms/templates/footer-edx-v2.html
 msgid "(Revised {date})"
 msgstr "(Revisado {date})"
->>>>>>> 5567cd4db6fd1399ebd8be91dcfce1125e64c629
 
-#. Translators: {date} will be an abbreviated date, indicating when the
-#. privacy
-#. policy was most recently revised.
-#: lms/templates/footer-edx-v2.html
-<<<<<<< HEAD
-msgid "(Revised {date})"
-msgstr "(Revisado {date})"
-
-#. Translators: {date} will be an abbreviated date, indicating when the
-#. privacy
-#. policy was most recently revised.
-#: lms/templates/footer-edx-v2.html
-msgid "10/22/2014"
-msgstr "10/22/2014"
-
-=======
-msgid "10/22/2014"
-msgstr "10/22/2014"
-
->>>>>>> 5567cd4db6fd1399ebd8be91dcfce1125e64c629
 #: lms/templates/footer-edx-v2.html lms/templates/footer-edx-v3.html
 #: lms/templates/footer.html
 msgid "News"
@@ -9749,11 +9726,7 @@ msgstr "Blog"
 
 #: lms/templates/footer-edx-v3.html
 msgid "FAQs"
-<<<<<<< HEAD
-msgstr ""
-=======
 msgstr "Preguntas Frecuentes"
->>>>>>> 5567cd4db6fd1399ebd8be91dcfce1125e64c629
 
 #: lms/templates/footer-edx-v3.html lms/templates/footer.html
 #: lms/templates/static_templates/jobs.html
@@ -9768,17 +9741,6 @@ msgstr "Donar"
 
 #: lms/templates/footer-edx-v3.html
 msgid "Sitemap"
-<<<<<<< HEAD
-msgstr ""
-
-#: lms/templates/footer-edx-v3.html lms/templates/footer.html
-msgid "Legal"
-msgstr "Legal"
-
-#: lms/templates/footer-edx-v3.html
-msgid "Website Accessibility Policy"
-msgstr ""
-=======
 msgstr "Mapa del sitio"
 
 #: lms/templates/footer-edx-v3.html lms/templates/footer.html
@@ -9788,7 +9750,6 @@ msgstr "Legales"
 #: lms/templates/footer-edx-v3.html
 msgid "Website Accessibility Policy"
 msgstr "Politicas de Accesibilidad"
->>>>>>> 5567cd4db6fd1399ebd8be91dcfce1125e64c629
 
 #: lms/templates/footer.html
 msgid ""

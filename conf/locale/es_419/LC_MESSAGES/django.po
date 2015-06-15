@@ -8641,7 +8641,7 @@ msgstr ""
 #: lms/templates/static_templates/tos.html
 #, fuzzy
 msgid "Terms of Service"
-msgstr ""
+msgstr "Términos del servicio"
 "#-#-#-#-#  django-partial.po (edx-platform)  #-#-#-#-#\n"
 "Términos de Servicio\n"
 "#-#-#-#-#  mako.po (edx-platform)  #-#-#-#-#\n"

@@ -17337,10 +17337,6 @@ msgstr "Añadir artículo"
 msgid "Press"
 msgstr "Prensa"
 
-#: agregdo por fer
-msgid "Terms of Service"
-msgstr "Terminos de Servicio"
-
 #: cms/templates/404.html
 msgid "The page that you were looking for was not found."
 msgstr "La página que usted está buscando no se encontró."

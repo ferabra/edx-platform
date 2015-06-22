@@ -21356,3 +21356,6 @@ msgstr ""
 
 msgid "About E-Huesped"
 msgstr "Acerca de E-Huesped"
+
+msgid "Site Terms of Service"
+msgstr "Términos de servicio del sitio"

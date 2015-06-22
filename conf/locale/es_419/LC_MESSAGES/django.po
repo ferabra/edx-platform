@@ -3896,7 +3896,7 @@ msgid ""
 msgstr ""
 "Opcional para citar la fuente de cualquier material utilizado. El citado "
 "automático puede realizarse por medio de <a "
-"href=\"http://easybib.com\">EasyBib</a>"
+"=\"http://easybib.com\">EasyBib</a>"
 
 #: common/lib/xmodule/xmodule/textannotation_module.py
 msgid "Diacritic Marks"
@@ -21359,3 +21359,10 @@ msgstr "Acerca de E-Huesped"
 
 msgid "Site Terms of Service"
 msgstr "Términos de servicio del sitio"
+
+msgid "Connect with Fundacion Huesped"
+msgstr "Conecta con Fundación Huesped"
+
+msgid "Developed by <a href="http://www.huesped.org.ar" target="_blank">Fundación Huésped</a>, an Argentinean organization working in the public health field with a human rights perspective focused on HIV/AIDS, STIs, as well as sexual and reproductive health, e&#8209;huesped is an educational platform that contributes to the permanent updating of professionals in the health team improving information, education and prevention access in the fields of HIV/AIDS, viral hepatitis and other transmissible diseases.<br><br>&copy; 2015 e&#8209;huesped. All rights reserved."
+
+msgstr "Desarrollado por <a href="http://www.huesped.org.ar" target="_blank">Fundación Huésped</a>, una organización argentina... working in the public health field with a human rights perspective focused on HIV/AIDS, STIs, as well as sexual and reproductive health, e&#8209;huesped is an educational platform that contributes to the permanent updating of professionals in the health team improving information, education and prevention access in the fields of HIV/AIDS, viral hepatitis and other transmissible diseases.<br><br>&copy; 2015 e&#8209;huesped. All rights reserved."

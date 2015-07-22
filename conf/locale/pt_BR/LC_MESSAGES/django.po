@@ -18860,3 +18860,26 @@ msgid ""
 msgstr ""
 "Uma nova revisão foi criada: combinar entre Revisão #%(r1)d e Revisão "
 "#%(r2)d"
+
+msgid "About E-Huesped"
+msgstr "Sobre E-Huesped"
+
+msgid "Site Terms of Service"
+msgstr "Termos de serviço"
+
+msgid "Connect with Fundacion Huesped"
+msgstr "Conetar-se com a Fundación Huésped"
+
+msgid "Frequently Asked Questions"
+msgstr "Preguntas frequentes"
+
+msgid ""
+"Developed by {link_start}Fundacion Huesped{link_end}, an Argentinean organization working "
+"in the public health field with a human rights perspective focused on HIV/AIDS, STIs, as well as sexual and reproductive health, e-huesped is an "
+"educational platform that contributes to the permanent updating of professionals in the health team improving information, education and prevention access in "
+"the fields of HIV/AIDS, viral hepatitis and other transmissible diseases. @ e-huesped 2015. All rights reserved. "
+msgstr ""
+"Desenvolvido pela {link_start}Fundacion Huesped{link_end}, uma organização argentina de  "
+"alcance regional que trabalha desde 1989 nas áreas da saúde pública  com perspectiva  "
+"de direitos humanos focada no HIV/SIDA, outras doenças transmissíveis, "
+", saúde sexual e reprodutiva.  @ e-huesped 2015. Todos os direitos reservados. "

@@ -263,18 +263,13 @@ msgid "Video ID"
 msgstr "ID del video"
 
 #: cms/djangoapps/contentstore/views/videos.py
-<<<<<<< HEAD
-=======
 #: common/djangoapps/config_models/admin.py
->>>>>>> upstream/master
 #: lms/djangoapps/shoppingcart/reports.py
 #: lms/templates/open_ended_problems/open_ended_problems.html
 #: lms/templates/shoppingcart/receipt.html
 msgid "Status"
 msgstr "Estado"
 
-<<<<<<< HEAD
-=======
 #: common/djangoapps/config_models/admin.py
 msgid "Revert to the selected configuration"
 msgstr "Revertir a la configuración seleccionada"
@@ -313,17 +308,11 @@ msgstr "Cambiado por"
 msgid "Enabled"
 msgstr "Habilitado"
 
->>>>>>> upstream/master
 #: common/djangoapps/cors_csrf/models.py
 msgid ""
 "List of domains that are allowed to make cross-domain requests to this site."
 "  Please list each domain on its own line."
 msgstr ""
-<<<<<<< HEAD
-"Lista de domicrosnios que tienen permitido hacer peticiones de dominio "
-"cruzado a este sitio.  Por favor ingrese cada dominio en una línea "
-"independiente."
-=======
 "Lista de dominios que tienen permitido hacer peticiones de dominio cruzado a"
 " este sitio.  Por favor ingrese cada dominio en una línea independiente."
 
@@ -405,8 +394,6 @@ msgid "Honor Code Certificate"
 msgstr "Certificado de Código de Honor"
 
 #: common/djangoapps/course_modes/models.py
-<<<<<<< HEAD
-=======
 msgid ""
 "Professional education modes are not allowed to have expiration_datetime "
 "set."
@@ -415,7 +402,6 @@ msgstr ""
 "horas de expiración."
 
 #: common/djangoapps/course_modes/models.py
->>>>>>> upstream/master
 msgid "Your verification is pending"
 msgstr "Su verificacion esta pendiente"
 
@@ -431,18 +417,14 @@ msgstr "Verificación de ID pendiente"
 msgid "You're enrolled as a verified student"
 msgstr "Estás inscrito como un estudiante verificado"
 
-<<<<<<< HEAD
 #: common/djangoapps/course_modes/models.py
-=======
 #: common/djangoapps/course_modes/models.py lms/envs/devstack.py
->>>>>>> upstream/master
 #: lms/templates/instructor/instructor_dashboard_2/course_info.html
 msgid "Verified"
 msgstr "Verificado"
 
 #: common/djangoapps/course_modes/models.py
 #: lms/templates/dashboard/_dashboard_course_listing.html
-<<<<<<< HEAD
 #, fuzzy
 msgid "ID Verified Ribbon/Badge"
 msgstr ""
@@ -468,20 +450,10 @@ msgstr ""
 "Codigo de Honor\n"
 "#-#-#-#-#  mako.po (edx-platform)  #-#-#-#-#\n"
 "Código de Honor"
-=======
-msgid "ID Verified Ribbon/Badge"
-msgstr "ID de la insignia o medalla verificada"
 
 #: common/djangoapps/course_modes/models.py
 msgid "You're enrolled as an honor code student"
 msgstr "Usted está inscrito como estudiante de código de honor"
-
-#: common/djangoapps/course_modes/models.py lms/djangoapps/branding/api.py
-#: openedx/core/djangoapps/user_api/views.py
-#: lms/templates/static_templates/honor.html
-msgid "Honor Code"
-msgstr "Código de Honor"
->>>>>>> upstream/master
 
 #: common/djangoapps/course_modes/models.py
 msgid "You're auditing this course"
@@ -592,8 +564,6 @@ msgstr "Incluir en lista blanca a {country} para el curso {course}"
 msgid "Blacklist {country} for {course}"
 msgstr "Incluir en lista negra a {country} para el curso {course}"
 
-<<<<<<< HEAD
-=======
 #: common/djangoapps/external_auth/views.py
 msgid ""
 "You have already created an account using an external login like WebAuth or "
@@ -603,7 +573,6 @@ msgstr ""
 "WebAuth o Shibboleth. Por favor contacte {tech_support_email} para obtener "
 "asistencia."
 
->>>>>>> upstream/master
 #: common/djangoapps/student/forms.py
 msgid "Username must be minimum of two characters long"
 msgstr "El nombre de usuario debe tener por lo menos dos caracteres."
@@ -621,14 +590,12 @@ msgid "Your legal name must be a minimum of two characters long"
 msgstr "Su nombre legal debe tener por lo menos dos caracteres"
 
 #: common/djangoapps/student/forms.py
-<<<<<<< HEAD
 msgid "Username should only consist of A-Z and 0-9, with no spaces."
 msgstr ""
 "El nombre de usuario solo debe contener los caracteres A-Z y 0-9, sin "
 "espacios."
 
 #: common/djangoapps/student/forms.py
-=======
 msgid ""
 "Usernames must contain only letters, numbers, underscores (_), and hyphens "
 "(-)."
@@ -636,16 +603,12 @@ msgstr ""
 
 #: common/djangoapps/student/forms.py
 #, python-format
->>>>>>> upstream/master
 msgid "Username cannot be more than %(limit_value)s characters long"
 msgstr ""
 "El nombre de usuario no puede tener más de %(limit_value)s caracteres."
 
 #: common/djangoapps/student/forms.py
-<<<<<<< HEAD
-=======
 #, python-format
->>>>>>> upstream/master
 msgid "Email cannot be more than %(limit_value)s characters long"
 msgstr "El correo no puede tener más de %(limit_value)s caracteres."
 
@@ -655,19 +618,11 @@ msgstr "Debe aceptar los términos y condiciones del servicio."
 
 #: common/djangoapps/student/forms.py
 msgid "A level of education is required"
-<<<<<<< HEAD
-msgstr "Se requiere diligenciar el nivel educativo"
-
-#: common/djangoapps/student/forms.py
-msgid "Your gender is required"
-msgstr "Se requiere diligenciar el género"
-=======
 msgstr "Ingrese información sobre nivel educativo"
 
 #: common/djangoapps/student/forms.py
 msgid "Your gender is required"
 msgstr "Ingrese información sobre género"
->>>>>>> upstream/master
 
 #: common/djangoapps/student/forms.py
 msgid "Your year of birth is required"
@@ -683,27 +638,15 @@ msgstr "Debe escribir una breve descripción de sus objetivos."
 
 #: common/djangoapps/student/forms.py
 msgid "A city is required"
-<<<<<<< HEAD
-msgstr "Se requiere diligenciar el campo ciudad."
-
-#: common/djangoapps/student/forms.py
-msgid "A country is required"
-msgstr "Se requiere diligenciar el campo País."
+msgstr "Ingrese información sobre ciudad."
 
 #: common/djangoapps/student/forms.py
 msgid "To enroll, you must follow the honor code."
 msgstr "Para inscribirse, debe aceptar el código de honor."
-=======
-msgstr "Ingrese información sobre ciudad."
 
 #: common/djangoapps/student/forms.py
 msgid "A country is required"
 msgstr "Ingrese información sobre país "
-
-#: common/djangoapps/student/forms.py
-msgid "To enroll, you must follow the honor code."
-msgstr "Para inscribirse, debe aceptar el Código de Honor."
->>>>>>> upstream/master
 
 #: common/djangoapps/student/forms.py
 msgid "You are missing one or more required fields"
@@ -757,11 +700,8 @@ msgstr "Licenciatura"
 
 #: common/djangoapps/student/models.py
 msgid "Associate degree"
-<<<<<<< HEAD
 msgstr "Grado asociado"
-=======
-msgstr "Técnico-profesional"
->>>>>>> upstream/master
+
 
 #: common/djangoapps/student/models.py
 msgid "Secondary/high school"
@@ -792,11 +732,8 @@ msgstr ""
 msgid "{platform_name} Verified Certificate for {course_name}"
 msgstr "Certificado Verificado de {platform_name} para el curso {course_name}"
 
-<<<<<<< HEAD
 #: common/djangoapps/student/models.py common/djangoapps/student/models.py
-=======
 #: common/djangoapps/student/models.py
->>>>>>> upstream/master
 msgid "{platform_name} Professional Certificate for {course_name}"
 msgstr ""
 "Certificado Profesional de {platform_name} para el curso {course_name}"
@@ -827,8 +764,6 @@ msgstr "Certificado de {platform_name} para el curso {course_name}"
 msgid "The ISO 639-1 language code for this language."
 msgstr "El código de idioma ISO 639-1 para este idioma."
 
-<<<<<<< HEAD
-=======
 #: common/djangoapps/student/models.py
 msgid "Namespace of enrollment attribute"
 msgstr "Espacio de nombres del atributo de inscripción."
@@ -845,7 +780,6 @@ msgstr "Valor del atributo de inscripción."
 msgid "The course you are looking for does not start until {date}."
 msgstr "El curso que está buscando comienza el {date}."
 
->>>>>>> upstream/master
 #: common/djangoapps/student/views.py
 msgid "Course id not specified"
 msgstr "No se especificó el ID del curso"
@@ -1082,11 +1016,10 @@ msgstr ""
 "Si se selecciona esta opción, los usuarios no tendrán que confirmar su "
 "correo, y sus cuentas estarán activadas inmediatamente después del registro."
 
-<<<<<<< HEAD
 #: common/djangoapps/student/views.py
 msgid "Invalid ID"
 msgstr "ID inválido"
-=======
+
 #: common/djangoapps/third_party_auth/pipeline.py
 msgid ""
 "This account has not yet been activated. An activation email has been re-"
@@ -1094,7 +1027,6 @@ msgid ""
 msgstr ""
 "Esta cuenta no ha sido activada. El correo de activación ha sido re enviado "
 "a {email_address}."
->>>>>>> upstream/master
 
 #. Translators: the translation for "LONG_DATE_FORMAT" must be a format
 #. string for formatting dates in a long form.  For example, the
@@ -1983,11 +1915,7 @@ msgstr ""
 #: common/lib/xmodule/xmodule/capa_base.py
 #: common/lib/xmodule/xmodule/combined_open_ended_module.py
 msgid "Date that this problem is due by"
-<<<<<<< HEAD
 msgstr "Fecha en que este problema se debe entregar"
-=======
-msgstr "Fecha en que se debe entregar esta actividad"
->>>>>>> upstream/master
 
 #: common/lib/xmodule/xmodule/capa_base.py
 #: common/lib/xmodule/xmodule/combined_open_ended_module.py
@@ -2472,8 +2400,6 @@ msgstr ""
 "\"id\":\"client_key:client_secret\"."
 
 #: common/lib/xmodule/xmodule/course_module.py
-<<<<<<< HEAD
-=======
 msgid "List of pairs of (title, url) for textbooks used in this course"
 msgstr ""
 "Lista de pares (título, url) para los libros de texto usados en este curso"
@@ -2499,7 +2425,6 @@ msgid "Date that this class ends"
 msgstr "Fecha en que termina esta clase"
 
 #: common/lib/xmodule/xmodule/course_module.py
->>>>>>> upstream/master
 msgid "Cosmetic Course Display Price"
 msgstr "Precio del curso para mostrar"
 
@@ -2533,11 +2458,8 @@ msgstr "Prerrequisitos del Curso"
 
 #: common/lib/xmodule/xmodule/course_module.py
 msgid "Pre-Requisite Course key if this course has a pre-requisite course"
-<<<<<<< HEAD
 msgstr ""
 "Clave de pre requisito del curso si el curso tiene otro curso como requisito"
-=======
-msgstr "Clave del curso prerequisito, en caso de existir"
 
 #: common/lib/xmodule/xmodule/course_module.py
 msgid "Grading policy definition for this class"
@@ -3426,16 +3348,14 @@ msgstr ""
 msgid "Both"
 msgstr "Ambos"
 
-<<<<<<< HEAD
+
 #: common/lib/xmodule/xmodule/course_module.py
 #: lms/templates/footer-edx-v2.html lms/templates/footer-edx-v3.html
 #: lms/templates/footer.html lms/templates/footer.html
 #: lms/templates/static_templates/about.html
 #: lms/templates/static_templates/about.html
-=======
 #: common/lib/xmodule/xmodule/course_module.py lms/djangoapps/branding/api.py
 #: lms/templates/footer.html lms/templates/static_templates/about.html
->>>>>>> upstream/master
 msgid "About"
 msgstr "Acerca de"
 
@@ -3453,13 +3373,8 @@ msgid ""
 " your course content. Note, you must enable Entrance Exams for this course "
 "setting to take effect."
 msgstr ""
-<<<<<<< HEAD
-"Especifica si los estudiantes deben completar un exámen de ingreso antes de "
-"que puedan ver el contenido de tu curso. Nota,debes habilitar Exámenes de "
-=======
 "Especifica si los estudiantes deben completar un examen de ingreso antes de "
 "que puedan ver el contenido de tu curso. Nota: debes habilitar Exámenes de "
->>>>>>> upstream/master
 "ingreso para este curso para que la configuración tenga efecto."
 
 #: common/lib/xmodule/xmodule/course_module.py
@@ -3479,16 +3394,11 @@ msgstr ""
 
 #: common/lib/xmodule/xmodule/course_module.py
 msgid "Entrance Exam ID"
-<<<<<<< HEAD
-msgstr "ID de Exámen de Admisión"
-=======
 msgstr "ID de Examen de Admisión"
->>>>>>> upstream/master
 
 #: common/lib/xmodule/xmodule/course_module.py
 msgid "Content module identifier (location) of entrance exam."
 msgstr "Contenido identificador del módulo (ubicación) de examen de ingreso."
-<<<<<<< HEAD
 
 #: common/lib/xmodule/xmodule/course_module.py
 msgid "Social Media Sharing URL"
@@ -3516,8 +3426,6 @@ msgid ""
 "Enter configuration for the teams feature. Expects two entries: "
 "max_team_size and topics, where topics is a list of topics."
 msgstr ""
-=======
->>>>>>> upstream/master
 
 #: common/lib/xmodule/xmodule/course_module.py
 msgid "Social Media Sharing URL"
@@ -3767,7 +3675,6 @@ msgstr "Cualquier tipo"
 #: cms/templates/widgets/header.html
 msgid "Library"
 msgstr "Librería"
-<<<<<<< HEAD
 
 #: common/lib/xmodule/xmodule/library_content_module.py
 msgid "Select the library from which you want to draw content."
@@ -3776,16 +3683,11 @@ msgstr "Seleccione la librería desde la que quieres dibujar el contenido."
 #: common/lib/xmodule/xmodule/library_content_module.py
 msgid "Library Version"
 msgstr "Versión de Libería"
-=======
 
 #: common/lib/xmodule/xmodule/library_content_module.py
 msgid "Select the library from which you want to draw content."
 msgstr "Seleccione la librería desde la que quieres dibujar el contenido."
->>>>>>> upstream/master
 
-#: common/lib/xmodule/xmodule/library_content_module.py
-msgid "Library Version"
-msgstr "Versión de Librería"
 
 #: common/lib/xmodule/xmodule/library_content_module.py
 msgid "Determines how content is drawn from the library"
@@ -4184,7 +4086,6 @@ msgstr "Ingrese la fecha límite para entrega de los problemas"
 #: common/lib/xmodule/xmodule/seq_module.py
 msgid "Is Entrance Exam"
 msgstr "es Exámen de admisión"
-<<<<<<< HEAD
 
 #: common/lib/xmodule/xmodule/seq_module.py
 msgid ""
@@ -4193,7 +4094,7 @@ msgid ""
 msgstr ""
 "Etiquetar este módulo como un examen de ingreso. Nota: Deberá habilitar los "
 "Examenes de Ingreso para que esta propiedad del curso tenga efecto."
-=======
+
 
 #: common/lib/xmodule/xmodule/seq_module.py
 msgid ""
@@ -4246,7 +4147,6 @@ msgid ""
 msgstr ""
 "Esta configuración indica si el examen tiene solo propósitos de prueba. Los "
 "exámenes de práctica no son verificados."
->>>>>>> upstream/master
 
 #: common/lib/xmodule/xmodule/split_test_module.py
 msgid "Group ID {group_id}"
@@ -5238,13 +5138,11 @@ msgstr ""
 "YouTube. Si no se ha asignado un ID para el video por parte de edx, "
 "introduzca los valores correspondientes en los otros campos y deje este "
 "campo vacío."
-<<<<<<< HEAD
-=======
+
 
 #: common/lib/xmodule/xmodule/video_module/video_xfields.py
 msgid "Date of the last view of the bumper"
 msgstr "Fecha de la última reproducción de la cortinilla"
->>>>>>> upstream/master
 
 #: common/lib/xmodule/xmodule/video_module/video_xfields.py
 msgid "Do not show bumper again"
@@ -5266,7 +5164,6 @@ msgstr ""
 msgid "Powered by Open edX"
 msgstr "Con la tecnología de Open edX"
 
-<<<<<<< HEAD
 #: common/static/js/vendor/mathjax-MathJax-c9db6ac/docs/source/mjtheme/layout.html
 #: lms/templates/wiki/plugins/attachments/index.html
 #: lms/templates/dashboard.html
@@ -5274,11 +5171,10 @@ msgstr "Con la tecnología de Open edX"
 #: lms/templates/edxnotes/edxnotes.html
 msgid "Search"
 msgstr "Buscar"
-=======
+
 #: lms/djangoapps/branding/api.py lms/templates/static_templates/blog.html
 msgid "Blog"
 msgstr "Blog"
->>>>>>> upstream/master
 
 #: lms/djangoapps/branding/api.py
 msgid "News"

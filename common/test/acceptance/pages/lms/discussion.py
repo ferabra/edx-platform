@@ -112,6 +112,16 @@ class DiscussionThreadPage(PageObject, DiscussionPageMixin):
         """Returns true if the response editor is present, false otherwise"""
         return self._is_element_visible(".response_{} .edit-post-body".format(response_id))
 
+    @wait_for_js
+    def is_discussion_body_visible(self):
+        return self._is_element_visible(".post-body")
+
+    def is_mathjax_preview_available(self):
+        return self.q(css=".MathJax_Preview").text[0] == ""
+
+    def is_mathjax_rendered(self):
+        return self._is_element_visible(".MathJax")
+
     def is_response_visible(self, comment_id):
         """Returns true if the response is viewable onscreen"""
         return self._is_element_visible(".response_{} .response-body".format(comment_id))
@@ -132,6 +142,11 @@ class DiscussionThreadPage(PageObject, DiscussionPageMixin):
                 lambda: self.is_response_editor_visible(response_id),
                 "Response edit started"
             ).fulfill()
+
+    def get_link_href(self):
+        """Extracts href attribute of the referenced link"""
+        link_href = self._find_within(".post-body p a").attrs('href')
+        return link_href[0] if link_href else None
 
     def get_response_vote_count(self, response_id):
         return self._get_element_text(".response_{} .discussion-response .action-vote .vote-count".format(response_id))
@@ -311,13 +326,15 @@ class DiscussionSortPreferencePage(CoursePage):
 
 
 class DiscussionTabSingleThreadPage(CoursePage):
-    def __init__(self, browser, course_id, thread_id):
+    def __init__(self, browser, course_id, discussion_id, thread_id):
         super(DiscussionTabSingleThreadPage, self).__init__(browser, course_id)
         self.thread_page = DiscussionThreadPage(
             browser,
             "body.discussion .discussion-article[data-id='{thread_id}']".format(thread_id=thread_id)
         )
-        self.url_path = "discussion/forum/dummy/threads/" + thread_id
+        self.url_path = "discussion/forum/{discussion_id}/threads/{thread_id}".format(
+            discussion_id=discussion_id, thread_id=thread_id
+        )
 
     def is_browser_on_page(self):
         return self.thread_page.is_browser_on_page()
@@ -329,6 +346,42 @@ class DiscussionTabSingleThreadPage(CoursePage):
         with self.thread_page._secondary_action_menu_open(".forum-thread-main-wrapper"):
             self._find_within(".forum-thread-main-wrapper .action-close").first.click()
 
+    @wait_for_js
+    def is_window_on_top(self):
+        """
+        Check if window's scroll is at top
+        """
+        return self.browser.execute_script("return $('html, body').offset().top") == 0
+
+    def _thread_is_rendered_successfully(self, thread_id):
+        return self.q(css=".discussion-article[data-id='{}']".format(thread_id)).visible
+
+    def click_and_open_thread(self, thread_id):
+        """
+        Click specific thread on the list.
+        """
+        thread_selector = "li[data-id='{}']".format(thread_id)
+        self.q(css=thread_selector).first.click()
+        EmptyPromise(
+            lambda: self._thread_is_rendered_successfully(thread_id),
+            "Thread has been rendered"
+        ).fulfill()
+
+    def check_threads_rendered_successfully(self, thread_count):
+        """
+        Count the number of threads available on page.
+        """
+        return len(self.q(css=".forum-nav-thread").results) == thread_count
+
+    def check_window_is_on_top(self):
+        """
+        Check window is on top of the page
+        """
+        EmptyPromise(
+            self.is_window_on_top,
+            "Window is on top"
+        ).fulfill()
+
 
 class InlineDiscussionPage(PageObject):
     url = None
@@ -336,7 +389,7 @@ class InlineDiscussionPage(PageObject):
     def __init__(self, browser, discussion_id):
         super(InlineDiscussionPage, self).__init__(browser)
         self._discussion_selector = (
-            "body.courseware .discussion-module[data-discussion-id='{discussion_id}'] ".format(
+            ".discussion-module[data-discussion-id='{discussion_id}'] ".format(
                 discussion_id=discussion_id
             )
         )
@@ -349,6 +402,7 @@ class InlineDiscussionPage(PageObject):
         return self.q(css=self._discussion_selector + " " + selector)
 
     def is_browser_on_page(self):
+        self.wait_for_ajax()
         return self.q(css=self._discussion_selector).present
 
     def is_discussion_expanded(self):
@@ -364,6 +418,10 @@ class InlineDiscussionPage(PageObject):
 
     def get_num_displayed_threads(self):
         return len(self._find_within(".discussion-thread"))
+
+    def has_thread(self, thread_id):
+        """Returns true if this page is showing the thread with the specified id."""
+        return self._find_within('.discussion-thread#thread_{}'.format(thread_id)).present
 
     def element_exists(self, selector):
         return self.q(css=self._discussion_selector + " " + selector).present
@@ -416,6 +474,13 @@ class InlineDiscussionThreadPage(DiscussionThreadPage):
     def is_thread_anonymous(self):
         return not self.q(css=".posted-details > .username").present
 
+    @wait_for_js
+    def check_if_selector_is_focused(self, selector):
+        """
+        Check if selector is focused
+        """
+        return self.browser.execute_script("return $('{}').is(':focus')".format(selector))
+
 
 class DiscussionUserProfilePage(CoursePage):
 
@@ -432,9 +497,9 @@ class DiscussionUserProfilePage(CoursePage):
         return (
             self.q(css='section.discussion-user-threads[data-course-id="{}"]'.format(self.course_id)).present
             and
-            self.q(css='section.user-profile div.sidebar-username').present
+            self.q(css='section.user-profile a.learner-profile-link').present
             and
-            self.q(css='section.user-profile div.sidebar-username').text[0] == self.username
+            self.q(css='section.user-profile a.learner-profile-link').text[0] == self.username
         )
 
     @wait_for_js
@@ -513,6 +578,10 @@ class DiscussionUserProfilePage(CoursePage):
             self.is_window_on_top,
             "Window is on top"
         ).fulfill()
+
+    def click_on_sidebar_username(self):
+        self.wait_for_page()
+        self.q(css='.learner-profile-link').first.click()
 
 
 class DiscussionTabHomePage(CoursePage, DiscussionPageMixin):

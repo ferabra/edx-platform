@@ -8,8 +8,8 @@ from bok_choy.promise import EmptyPromise, Promise
 from bok_choy.javascript import wait_for_js, js_defined
 from ....tests.helpers import YouTubeStubConfig
 from ...lms.video.video import VideoPage
+from ...common.utils import wait_for_notification
 from selenium.webdriver.common.keys import Keys
-from ..utils import wait_for_notification
 
 
 CLASS_SELECTORS = {
@@ -30,7 +30,7 @@ CLASS_SELECTORS = {
 }
 
 BUTTON_SELECTORS = {
-    'create_video': 'a[data-category="video"]',
+    'create_video': 'button[data-category="video"]',
     'handout_download': '.video-handout.video-download-button a',
     'handout_download_editor': '.wrapper-comp-setting.file-uploader .download-action',
     'upload_asset': '.upload-action',
@@ -53,22 +53,23 @@ DISPLAY_NAME = "Component Display Name"
 DEFAULT_SETTINGS = [
     # basic
     [DISPLAY_NAME, 'Video', False],
-    ['Default Video URL', 'http://youtu.be/OEoXaMPEzfM, , ', False],
+    ['Default Video URL', 'http://youtu.be/3_yD_cEKoCk, , ', False],
 
     # advanced
     [DISPLAY_NAME, 'Video', False],
     ['Default Timed Transcript', '', False],
     ['Download Transcript Allowed', 'False', False],
     ['Downloadable Transcript URL', '', False],
-    ['EdX Video ID', '', False],
     ['Show Transcript', 'True', False],
     ['Transcript Languages', '', False],
     ['Upload Handout', '', False],
+    ['Video Available on Web Only', 'False', False],
     ['Video Download Allowed', 'False', False],
     ['Video File URLs', '', False],
+    ['Video ID', '', False],
     ['Video Start Time', '00:00:00', False],
     ['Video Stop Time', '00:00:00', False],
-    ['YouTube ID', 'OEoXaMPEzfM', False],
+    ['YouTube ID', '3_yD_cEKoCk', False],
     ['YouTube ID for .75x speed', '', False],
     ['YouTube ID for 1.25x speed', '', False],
     ['YouTube ID for 1.5x speed', '', False]
@@ -80,7 +81,7 @@ DELAY = 0.5
 
 
 @js_defined('window.Video', 'window.RequireJS.require', 'window.jQuery', 'window.XModule', 'window.XBlock',
-            'window.MathJax.isReady')
+            'window.MathJax', 'window.MathJax.isReady')
 class VideoComponentPage(VideoPage):
     """
     CMS Video Component Page

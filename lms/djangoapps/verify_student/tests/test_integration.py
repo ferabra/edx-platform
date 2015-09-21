@@ -2,24 +2,15 @@
 Integration tests of the payment flow, including course mode selection.
 """
 
-from lxml.html import soupparser
-from django.test.utils import override_settings
 from django.core.urlresolvers import reverse
-from django.conf import settings
 
 from xmodule.modulestore.tests.factories import CourseFactory
-from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase, mixed_store_config
+from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from student.tests.factories import UserFactory
 from student.models import CourseEnrollment
 from course_modes.tests.factories import CourseModeFactory
 
 
-# Since we don't need any XML course fixtures, use a modulestore configuration
-# that disables the XML modulestore.
-MODULESTORE_CONFIG = mixed_store_config(settings.COMMON_TEST_DATA_ROOT, {}, include_xml=False)
-
-
-@override_settings(MODULESTORE=MODULESTORE_CONFIG)
 class TestProfEdVerification(ModuleStoreTestCase):
     """
     Integration test for professional ed verification, including course mode selection.
@@ -29,6 +20,8 @@ class TestProfEdVerification(ModuleStoreTestCase):
     MIN_PRICE = 1438
 
     def setUp(self):
+        super(TestProfEdVerification, self).setUp()
+
         self.user = UserFactory.create(username="rusty", password="test")
         self.client.login(username="rusty", password="test")
         course = CourseFactory.create(org='Robot', number='999', display_name='Test Course')
@@ -65,4 +58,4 @@ class TestProfEdVerification(ModuleStoreTestCase):
 
         # On the first page of the flow, verify that there's a button allowing the user
         # to proceed to the payment processor; this is the only action the user is allowed to take.
-        self.assertContains(resp, 'pay_button')
+        self.assertContains(resp, 'payment-button')

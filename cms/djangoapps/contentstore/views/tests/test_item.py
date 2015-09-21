@@ -5,6 +5,7 @@ import ddt
 
 from mock import patch, Mock, PropertyMock
 from pytz import UTC
+from pyquery import PyQuery
 from webob import Response
 
 from django.http import Http404
@@ -25,9 +26,10 @@ from student.tests.factories import UserFactory
 from xmodule.capa_module import CapaDescriptor
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.django import modulestore
-from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
-from xmodule.modulestore.tests.factories import ItemFactory, LibraryFactory, check_mongo_calls
+from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase, TEST_DATA_SPLIT_MODULESTORE
+from xmodule.modulestore.tests.factories import ItemFactory, LibraryFactory, check_mongo_calls, CourseFactory
 from xmodule.x_module import STUDIO_VIEW, STUDENT_VIEW
+from xmodule.course_module import DEFAULT_START_DATE
 from xblock.exceptions import NoSuchHandlerError
 from xblock_django.user_service import DjangoXBlockUserService
 from opaque_keys.edx.keys import UsageKey, CourseKey
@@ -117,9 +119,9 @@ class GetItemTest(ItemTest):
         return resp
 
     @ddt.data(
-        (1, 16, 14, 15, 11),
-        (2, 16, 14, 15, 11),
-        (3, 16, 14, 15, 11),
+        (1, 17, 15, 16, 12),
+        (2, 17, 15, 16, 12),
+        (3, 17, 15, 16, 12),
     )
     @ddt.unpack
     def test_get_query_count(self, branching_factor, chapter_queries, section_queries, unit_queries, problem_queries):
@@ -135,9 +137,9 @@ class GetItemTest(ItemTest):
             self.client.get(reverse_usage_url('xblock_handler', self.populated_usage_keys['problem'][-1]))
 
     @ddt.data(
-        (1, 26),
-        (2, 28),
-        (3, 30),
+        (1, 30),
+        (2, 32),
+        (3, 34),
     )
     @ddt.unpack
     def test_container_get_query_count(self, branching_factor, unit_queries,):
@@ -308,12 +310,61 @@ class GetItemTest(ItemTest):
             content_contains="Couldn't parse paging parameters"
         )
 
+    def test_get_user_partitions_and_groups(self):
+        self.course.user_partitions = [
+            UserPartition(
+                id=0,
+                name="Verification user partition",
+                scheme=UserPartition.get_scheme("verification"),
+                description="Verification user partition",
+                groups=[
+                    Group(id=0, name="Group A"),
+                    Group(id=1, name="Group B"),
+                ],
+            ),
+        ]
+        self.store.update_item(self.course, self.user.id)
 
+        # Create an item and retrieve it
+        resp = self.create_xblock(category='vertical')
+        usage_key = self.response_usage_key(resp)
+        resp = self.client.get(reverse_usage_url('xblock_handler', usage_key))
+        self.assertEqual(resp.status_code, 200)
+
+        # Check that the partition and group information was returned
+        result = json.loads(resp.content)
+        self.assertEqual(result["user_partitions"], [
+            {
+                "id": 0,
+                "name": "Verification user partition",
+                "scheme": "verification",
+                "groups": [
+                    {
+                        "id": 0,
+                        "name": "Group A",
+                        "selected": False,
+                        "deleted": False,
+                    },
+                    {
+                        "id": 1,
+                        "name": "Group B",
+                        "selected": False,
+                        "deleted": False,
+                    },
+                ]
+            }
+        ])
+        self.assertEqual(result["group_access"], {})
+
+
+@ddt.ddt
 class DeleteItem(ItemTest):
     """Tests for '/xblock' DELETE url."""
-    def test_delete_static_page(self):
+    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
+    def test_delete_static_page(self, store):
+        course = CourseFactory.create(default_store=store)
         # Add static tab
-        resp = self.create_xblock(category='static_tab')
+        resp = self.create_xblock(category='static_tab', parent_usage_key=course.location)
         usage_key = self.response_usage_key(resp)
 
         # Now delete it. There was a bug that the delete was failing (static tabs do not exist in draft modulestore).
@@ -558,13 +609,13 @@ class TestDuplicateItem(ItemTest):
         return self.response_usage_key(resp)
 
 
-class TestEditItem(ItemTest):
+class TestEditItemSetup(ItemTest):
     """
-    Test xblock update.
+    Setup for xblock update tests.
     """
     def setUp(self):
         """ Creates the test course structure and a couple problems to 'edit'. """
-        super(TestEditItem, self).setUp()
+        super(TestEditItemSetup, self).setUp()
         # create a chapter
         display_name = 'chapter created'
         resp = self.create_xblock(display_name=display_name, category='chapter')
@@ -587,6 +638,11 @@ class TestEditItem(ItemTest):
 
         self.course_update_url = reverse_usage_url("xblock_handler", self.usage_key)
 
+
+class TestEditItem(TestEditItemSetup):
+    """
+    Test xblock update.
+    """
     def test_delete_field(self):
         """
         Sending null in for a field 'deletes' it
@@ -1004,6 +1060,27 @@ class TestEditItem(ItemTest):
         self.assertIn("Incorrect RelativeTime value", parsed["error"])  # See xmodule/fields.py
 
 
+class TestEditItemSplitMongo(TestEditItemSetup):
+    """
+    Tests for EditItem running on top of the SplitMongoModuleStore.
+    """
+    MODULESTORE = TEST_DATA_SPLIT_MODULESTORE
+
+    def test_editing_view_wrappers(self):
+        """
+        Verify that the editing view only generates a single wrapper, no matter how many times it's loaded
+
+        Exposes: PLAT-417
+        """
+        view_url = reverse_usage_url("xblock_view_handler", self.problem_usage_key, {"view_name": STUDIO_VIEW})
+
+        for __ in xrange(3):
+            resp = self.client.get(view_url, HTTP_ACCEPT='application/json')
+            self.assertEqual(resp.status_code, 200)
+            content = json.loads(resp.content)
+            self.assertEqual(len(PyQuery(content['html'])('.xblock-{}'.format(STUDIO_VIEW))), 1)
+
+
 class TestEditSplitModule(ItemTest):
     """
     Tests around editing instances of the split_test module.
@@ -1188,6 +1265,8 @@ class TestEditSplitModule(ItemTest):
 @ddt.ddt
 class TestComponentHandler(TestCase):
     def setUp(self):
+        super(TestComponentHandler, self).setUp()
+
         self.request_factory = RequestFactory()
 
         patcher = patch('contentstore.views.component.modulestore')
@@ -1352,6 +1431,7 @@ class TestComponentTemplates(CourseTestCase):
         self.assertEqual(template_display_names, ['Annotation', 'Open Response Assessment', 'Peer Grading Interface'])
 
 
+@ddt.ddt
 class TestXBlockInfo(ItemTest):
     """
     Unit tests for XBlock's outline handling.
@@ -1378,7 +1458,33 @@ class TestXBlockInfo(ItemTest):
         json_response = json.loads(resp.content)
         self.validate_course_xblock_info(json_response, course_outline=True)
 
-    def test_chapter_entrance_exam_xblock_info(self):
+    @ddt.data(
+        (ModuleStoreEnum.Type.split, 5, 5),
+        (ModuleStoreEnum.Type.mongo, 5, 7),
+    )
+    @ddt.unpack
+    def test_xblock_outline_handler_mongo_calls(self, store_type, chapter_queries, chapter_queries_1):
+        with self.store.default_store(store_type):
+            course = CourseFactory.create()
+            chapter = ItemFactory.create(
+                parent_location=course.location, category='chapter', display_name='Week 1'
+            )
+            outline_url = reverse_usage_url('xblock_outline_handler', chapter.location)
+            with check_mongo_calls(chapter_queries):
+                self.client.get(outline_url, HTTP_ACCEPT='application/json')
+
+            sequential = ItemFactory.create(
+                parent_location=chapter.location, category='sequential', display_name='Sequential 1'
+            )
+
+            ItemFactory.create(
+                parent_location=sequential.location, category='vertical', display_name='Vertical 1'
+            )
+            # calls should be same after adding two new children for split only.
+            with check_mongo_calls(chapter_queries_1):
+                self.client.get(outline_url, HTTP_ACCEPT='application/json')
+
+    def test_entrance_exam_chapter_xblock_info(self):
         chapter = ItemFactory.create(
             parent_location=self.course.location, category='chapter', display_name="Entrance Exam",
             user_id=self.user.id, is_entrance_exam=True
@@ -1389,8 +1495,68 @@ class TestXBlockInfo(ItemTest):
             include_child_info=True,
             include_children_predicate=ALWAYS,
         )
-        self.assertEqual(xblock_info['override_type'], {'is_entrance_exam': True})
+        # entrance exam chapter should not be deletable, draggable and childAddable.
+        actions = xblock_info['actions']
+        self.assertEqual(actions['deletable'], False)
+        self.assertEqual(actions['draggable'], False)
+        self.assertEqual(actions['childAddable'], False)
         self.assertEqual(xblock_info['display_name'], 'Entrance Exam')
+        self.assertIsNone(xblock_info.get('is_header_visible', None))
+
+    def test_none_entrance_exam_chapter_xblock_info(self):
+        chapter = ItemFactory.create(
+            parent_location=self.course.location, category='chapter', display_name="Test Chapter",
+            user_id=self.user.id
+        )
+        chapter = modulestore().get_item(chapter.location)
+        xblock_info = create_xblock_info(
+            chapter,
+            include_child_info=True,
+            include_children_predicate=ALWAYS,
+        )
+
+        # chapter should be deletable, draggable and childAddable if not an entrance exam.
+        actions = xblock_info['actions']
+        self.assertEqual(actions['deletable'], True)
+        self.assertEqual(actions['draggable'], True)
+        self.assertEqual(actions['childAddable'], True)
+        # chapter xblock info should not contains the key of 'is_header_visible'.
+        self.assertIsNone(xblock_info.get('is_header_visible', None))
+
+    def test_entrance_exam_sequential_xblock_info(self):
+        chapter = ItemFactory.create(
+            parent_location=self.course.location, category='chapter', display_name="Entrance Exam",
+            user_id=self.user.id, is_entrance_exam=True, in_entrance_exam=True
+        )
+
+        subsection = ItemFactory.create(
+            parent_location=chapter.location, category='sequential', display_name="Subsection - Entrance Exam",
+            user_id=self.user.id, in_entrance_exam=True
+        )
+        subsection = modulestore().get_item(subsection.location)
+        xblock_info = create_xblock_info(
+            subsection,
+            include_child_info=True,
+            include_children_predicate=ALWAYS
+        )
+        # in case of entrance exam subsection, header should be hidden.
+        self.assertEqual(xblock_info['is_header_visible'], False)
+        self.assertEqual(xblock_info['display_name'], 'Subsection - Entrance Exam')
+
+    def test_none_entrance_exam_sequential_xblock_info(self):
+        subsection = ItemFactory.create(
+            parent_location=self.chapter.location, category='sequential', display_name="Subsection - Exam",
+            user_id=self.user.id
+        )
+        subsection = modulestore().get_item(subsection.location)
+        xblock_info = create_xblock_info(
+            subsection,
+            include_child_info=True,
+            include_children_predicate=ALWAYS,
+            parent_xblock=self.chapter
+        )
+        # sequential xblock info should not contains the key of 'is_header_visible'.
+        self.assertIsNone(xblock_info.get('is_header_visible', None))
 
     def test_chapter_xblock_info(self):
         chapter = modulestore().get_item(self.chapter.location)
@@ -1412,11 +1578,13 @@ class TestXBlockInfo(ItemTest):
 
     def test_vertical_xblock_info(self):
         vertical = modulestore().get_item(self.vertical.location)
+
         xblock_info = create_xblock_info(
             vertical,
             include_child_info=True,
             include_children_predicate=ALWAYS,
-            include_ancestor_info=True
+            include_ancestor_info=True,
+            user=self.user
         )
         add_container_page_publishing_info(vertical, xblock_info)
         self.validate_vertical_xblock_info(xblock_info)
@@ -1429,6 +1597,29 @@ class TestXBlockInfo(ItemTest):
             include_children_predicate=ALWAYS
         )
         self.validate_component_xblock_info(xblock_info)
+
+    @ddt.data(ModuleStoreEnum.Type.split, ModuleStoreEnum.Type.mongo)
+    def test_validate_start_date(self, store_type):
+        """
+        Validate if start-date year is less than 1900 reset the date to DEFAULT_START_DATE.
+        """
+        with self.store.default_store(store_type):
+            course = CourseFactory.create()
+            chapter = ItemFactory.create(
+                parent_location=course.location, category='chapter', display_name='Week 1'
+            )
+
+            chapter.start = datetime(year=1899, month=1, day=1, tzinfo=UTC)
+
+            xblock_info = create_xblock_info(
+                chapter,
+                include_child_info=True,
+                include_children_predicate=ALWAYS,
+                include_ancestor_info=True,
+                user=self.user
+            )
+
+            self.assertEqual(xblock_info['start'], DEFAULT_START_DATE.strftime('%Y-%m-%dT%H:%M:%SZ'))
 
     def validate_course_xblock_info(self, xblock_info, has_child_info=True, course_outline=False):
         """
@@ -1539,6 +1730,38 @@ class TestXBlockInfo(ItemTest):
                     )
         else:
             self.assertIsNone(xblock_info.get('child_info', None))
+
+    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_PROCTORED_EXAMS': True})
+    def test_proctored_exam_xblock_info(self):
+        self.course.enable_proctored_exams = True
+        self.course.save()
+        self.store.update_item(self.course, self.user.id)
+
+        course = modulestore().get_item(self.course.location)
+        xblock_info = create_xblock_info(
+            course,
+            include_child_info=True,
+            include_children_predicate=ALWAYS,
+        )
+        # exam proctoring should be enabled and time limited.
+        self.assertEqual(xblock_info['enable_proctored_exams'], True)
+
+        sequential = ItemFactory.create(
+            parent_location=self.chapter.location, category='sequential',
+            display_name="Test Lesson 1", user_id=self.user.id,
+            is_proctored_enabled=True, is_time_limited=True,
+            default_time_limit_minutes=100
+        )
+        sequential = modulestore().get_item(sequential.location)
+        xblock_info = create_xblock_info(
+            sequential,
+            include_child_info=True,
+            include_children_predicate=ALWAYS,
+        )
+        # exam proctoring should be enabled and time limited.
+        self.assertEqual(xblock_info['is_proctored_enabled'], True)
+        self.assertEqual(xblock_info['is_time_limited'], True)
+        self.assertEqual(xblock_info['default_time_limit_minutes'], 100)
 
 
 class TestLibraryXBlockInfo(ModuleStoreTestCase):

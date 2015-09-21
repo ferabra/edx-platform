@@ -3,8 +3,11 @@ Provides a UserPartition driver for cohorts.
 """
 import logging
 
-from courseware import courses
-from courseware.masquerade import get_masquerading_group_info
+from courseware.masquerade import (  # pylint: disable=import-error
+    get_course_masquerade,
+    get_masquerading_group_info,
+    is_masquerading_as_specific_student,
+)
 from xmodule.partitions.partitions import NoSuchUserPartitionGroupError
 
 from .cohorts import get_cohort, get_group_info_for_cohort
@@ -22,7 +25,7 @@ class CohortPartitionScheme(object):
 
     # pylint: disable=unused-argument
     @classmethod
-    def get_group_for_user(cls, course_key, user, user_partition, track_function=None):
+    def get_group_for_user(cls, course_key, user, user_partition, track_function=None, use_cached=True):
         """
         Returns the Group from the specified user partition to which the user
         is assigned, via their cohort membership and any mappings from cohorts
@@ -36,22 +39,27 @@ class CohortPartitionScheme(object):
         If the user has no cohort mapping, or there is no (valid) cohort ->
         partition group mapping found, the function returns None.
         """
-        # If the current user is masquerading as being in a group belonging to the
-        # specified user partition then return the masquerading group.
-        group_id, user_partition_id = get_masquerading_group_info(user, course_key)
-        if group_id is not None and user_partition_id == user_partition.id:
-            try:
-                return user_partition.get_group(group_id)
-            except NoSuchUserPartitionGroupError:
-                # If the group no longer exists then the masquerade is not in effect
-                pass
+        # First, check if we have to deal with masquerading.
+        # If the current user is masquerading as a specific student, use the
+        # same logic as normal to return that student's group. If the current
+        # user is masquerading as a generic student in a specific group, then
+        # return that group.
+        if get_course_masquerade(user, course_key) and not is_masquerading_as_specific_student(user, course_key):
+            group_id, user_partition_id = get_masquerading_group_info(user, course_key)
+            if user_partition_id == user_partition.id and group_id is not None:
+                try:
+                    return user_partition.get_group(group_id)
+                except NoSuchUserPartitionGroupError:
+                    return None
+            # The user is masquerading as a generic student. We can't show any particular group.
+            return None
 
-        cohort = get_cohort(user, course_key)
+        cohort = get_cohort(user, course_key, use_cached=use_cached)
         if cohort is None:
             # student doesn't have a cohort
             return None
 
-        group_id, partition_id = get_group_info_for_cohort(cohort)
+        group_id, partition_id = get_group_info_for_cohort(cohort, use_cached=use_cached)
         if partition_id is None:
             # cohort isn't mapped to any partition group.
             return None
@@ -91,13 +99,12 @@ class CohortPartitionScheme(object):
             return None
 
 
-def get_cohorted_user_partition(course_key):
+def get_cohorted_user_partition(course):
     """
     Returns the first user partition from the specified course which uses the CohortPartitionScheme,
     or None if one is not found. Note that it is currently recommended that each course have only
     one cohorted user partition.
     """
-    course = courses.get_course_by_id(course_key)
     for user_partition in course.user_partitions:
         if user_partition.scheme == CohortPartitionScheme:
             return user_partition

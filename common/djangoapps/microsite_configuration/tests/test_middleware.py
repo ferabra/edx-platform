@@ -10,6 +10,8 @@ from django.test.client import Client
 from django.test.utils import override_settings
 import unittest
 
+from student.tests.factories import UserFactory
+
 
 # NOTE: We set SESSION_SAVE_EVERY_REQUEST to True in order to make sure
 # Sessions are always started on every request
@@ -21,8 +23,14 @@ class MicroSiteSessionCookieTests(TestCase):
     """
 
     def setUp(self):
-        # create a test client
+        super(MicroSiteSessionCookieTests, self).setUp()
+        # Create a test client, and log it in so that it will save some session
+        # data.
+        self.user = UserFactory.create()
+        self.user.set_password('password')
+        self.user.save()
         self.client = Client()
+        self.client.login(username=self.user.username, password="password")
 
     def test_session_cookie_domain_no_microsite(self):
         """

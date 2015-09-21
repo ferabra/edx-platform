@@ -7,25 +7,19 @@ from mock import patch
 from nose.tools import raises
 import unittest
 
-from django.test.utils import override_settings
 from django.conf import settings
-from xmodule.modulestore.tests.django_utils import (
-    ModuleStoreTestCase, mixed_store_config
-)
+from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory
-from enrollment.errors import CourseNotFoundError, UserNotFoundError, CourseEnrollmentClosedError, \
-    CourseEnrollmentFullError, CourseEnrollmentExistsError
+from enrollment.errors import (
+    CourseNotFoundError, UserNotFoundError, CourseEnrollmentClosedError,
+    CourseEnrollmentFullError, CourseEnrollmentExistsError,
+)
 from student.tests.factories import UserFactory, CourseModeFactory
 from student.models import CourseEnrollment, EnrollmentClosedError, CourseFullError, AlreadyEnrolledError
 from enrollment import data
 
-# Since we don't need any XML course fixtures, use a modulestore configuration
-# that disables the XML modulestore.
-MODULESTORE_CONFIG = mixed_store_config(settings.COMMON_TEST_DATA_ROOT, {}, include_xml=False)
-
 
 @ddt.ddt
-@override_settings(MODULESTORE=MODULESTORE_CONFIG)
 @unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
 class EnrollmentDataTest(ModuleStoreTestCase):
     """
@@ -133,6 +127,19 @@ class EnrollmentDataTest(ModuleStoreTestCase):
         results = data.get_course_enrollments(self.user.username)
         self.assertEqual(results, created_enrollments)
 
+        # Now create a course enrollment with some invalid course (does
+        # not exist in database) for the user and check that the method
+        # 'get_course_enrollments' ignores course enrollments for invalid
+        # or deleted courses
+        CourseEnrollment.objects.create(
+            user=self.user,
+            course_id='InvalidOrg/InvalidCourse/InvalidRun',
+            mode='honor',
+            is_active=True
+        )
+        updated_results = data.get_course_enrollments(self.user.username)
+        self.assertEqual(results, updated_results)
+
     @ddt.data(
         # Default (no course modes in the database)
         # Expect that users are automatically enrolled as "honor".
@@ -162,6 +169,45 @@ class EnrollmentDataTest(ModuleStoreTestCase):
         result = data.get_course_enrollment(self.user.username, unicode(self.course.id))
         self.assertEqual(self.user.username, result['user'])
         self.assertEqual(enrollment, result)
+
+    @ddt.data(
+        # Default (no course modes in the database)
+        # Expect that users are automatically enrolled as "honor".
+        ([], 'credit'),
+
+        # Audit / Verified / Honor
+        # We should always go to the "choose your course" page.
+        # We should also be enrolled as "honor" by default.
+        (['honor', 'verified', 'audit', 'credit'], 'credit'),
+    )
+    @ddt.unpack
+    def test_add_or_update_enrollment_attr(self, course_modes, enrollment_mode):
+        # Create the course modes (if any) required for this test case
+        self._create_course_modes(course_modes)
+        data.create_course_enrollment(self.user.username, unicode(self.course.id), enrollment_mode, True)
+        enrollment_attributes = [
+            {
+                "namespace": "credit",
+                "name": "provider_id",
+                "value": "hogwarts",
+            }
+        ]
+
+        data.add_or_update_enrollment_attr(self.user.username, unicode(self.course.id), enrollment_attributes)
+        enrollment_attr = data.get_enrollment_attributes(self.user.username, unicode(self.course.id))
+        self.assertEqual(enrollment_attr[0], enrollment_attributes[0])
+
+        enrollment_attributes = [
+            {
+                "namespace": "credit",
+                "name": "provider_id",
+                "value": "ASU",
+            }
+        ]
+
+        data.add_or_update_enrollment_attr(self.user.username, unicode(self.course.id), enrollment_attributes)
+        enrollment_attr = data.get_enrollment_attributes(self.user.username, unicode(self.course.id))
+        self.assertEqual(enrollment_attr[0], enrollment_attributes[0])
 
     @raises(CourseNotFoundError)
     def test_non_existent_course(self):

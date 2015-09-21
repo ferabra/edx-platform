@@ -1,5 +1,5 @@
-define(["jquery", "js/common_helpers/ajax_helpers", "js/spec_helpers/view_helpers", "js/index",
-        "js/views/utils/view_utils"],
+define(["jquery", "common/js/spec_helpers/ajax_helpers", "common/js/spec_helpers/view_helpers", "js/index",
+        "common/js/components/utils/view_utils"],
     function ($, AjaxHelpers, ViewHelpers, IndexUtils, ViewUtils) {
         describe("Course listing page", function () {
             var mockIndexPageHTML = readFixtures('mock/mock-index-page.underscore');
@@ -33,7 +33,7 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/spec_helpers/view_helper
                 var reloadSpy = spyOn(ViewUtils, 'reload');
                 $('.dismiss-button').click();
                 AjaxHelpers.expectJsonRequest(requests, 'DELETE', 'dummy_dismiss_url');
-                AjaxHelpers.respondToDelete(requests);
+                AjaxHelpers.respondWithNoContent(requests);
                 expect(reloadSpy).toHaveBeenCalled();
             });
 

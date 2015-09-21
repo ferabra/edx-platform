@@ -17,11 +17,11 @@ defined in the environment:
 import yaml
 
 from .common import *
-from logsettings import get_logger_config
+from openedx.core.lib.logsettings import get_logger_config
 from util.config_parse import convert_tokens
 import os
 
-from path import path
+from path import Path as path
 from xmodule.modulestore.modulestore_settings import convert_module_store_setting_if_needed
 
 # https://stackoverflow.com/questions/2890146/how-to-force-pyyaml-to-load-strings-as-unicode-objects
@@ -75,8 +75,7 @@ BROKER_POOL_LIMIT = 0
 BROKER_CONNECTION_TIMEOUT = 1
 
 # For the Result Store, use the django cache named 'celery'
-CELERY_RESULT_BACKEND = 'cache'
-CELERY_CACHE_BACKEND = 'celery'
+CELERY_RESULT_BACKEND = 'djcelery.backends.cache:CacheBackend'
 
 # When the broker is behind an ELB, use a heartbeat to refresh the
 # connection and to detect if it has been dropped.

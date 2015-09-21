@@ -3,7 +3,6 @@
     requirejs.config({
         paths: {
             'gettext': 'xmodule_js/common_static/js/test/i18n',
-            'mustache': 'xmodule_js/common_static/js/vendor/mustache',
             'codemirror': 'xmodule_js/common_static/js/vendor/CodeMirror/codemirror',
             'jquery': 'xmodule_js/common_static/js/vendor/jquery.min',
             'jquery.ui': 'xmodule_js/common_static/js/vendor/jquery-ui.min',
@@ -22,14 +21,20 @@
             'jquery.inputnumber': 'xmodule_js/common_static/js/vendor/html5-input-polyfills/number-polyfill',
             'jquery.immediateDescendents': 'xmodule_js/common_static/coffee/src/jquery.immediateDescendents',
             'jquery.simulate': 'xmodule_js/common_static/js/vendor/jquery.simulate',
+            'jquery.timeago': 'xmodule_js/common_static/js/vendor/jquery.timeago',
             'jquery.url': 'xmodule_js/common_static/js/vendor/url.min',
             'datepair': 'xmodule_js/common_static/js/vendor/timepicker/datepair',
             'date': 'xmodule_js/common_static/js/vendor/date',
+            'moment': 'xmodule_js/common_static/js/vendor/moment.min',
+            'moment-with-locales': 'xmodule_js/common_static/js/vendor/moment-with-locales.min',
+            'text': 'xmodule_js/common_static/js/vendor/requirejs/text',
             'underscore': 'xmodule_js/common_static/js/vendor/underscore-min',
             'underscore.string': 'xmodule_js/common_static/js/vendor/underscore.string.min',
             'backbone': 'xmodule_js/common_static/js/vendor/backbone-min',
             'backbone.associations': 'xmodule_js/common_static/js/vendor/backbone-associations-min',
             'backbone.paginator': 'xmodule_js/common_static/js/vendor/backbone.paginator.min',
+            'backbone-super': 'js/vendor/backbone-super',
+            'URI': 'xmodule_js/common_static/js/vendor/URI.min',
             'tinymce': 'xmodule_js/common_static/js/vendor/tinymce/js/tinymce/tinymce.full.min',
             'jquery.tinymce': 'xmodule_js/common_static/js/vendor/tinymce/js/tinymce/jquery.tinymce',
             'xmodule': 'xmodule_js/src/xmodule',
@@ -45,8 +50,8 @@
             'domReady': 'xmodule_js/common_static/js/vendor/domReady',
             'mathjax': '//cdn.mathjax.org/mathjax/2.4-latest/MathJax.js?config=TeX-MML-AM_HTMLorMML-full&delayStartupUntil=configured',
             'youtube': '//www.youtube.com/player_api?noext',
-            'tender': '//api.tenderapp.com/tender_widget',
             'coffee/src/ajax_prefix': 'xmodule_js/common_static/coffee/src/ajax_prefix',
+            'coffee/src/instructor_dashboard/student_admin': 'coffee/src/instructor_dashboard/student_admin',
             'xmodule_js/common_static/js/test/add_ajax_prefix': 'xmodule_js/common_static/js/test/add_ajax_prefix',
             'xblock/core': 'xmodule_js/common_static/js/xblock/core',
             'xblock/runtime.v1': 'xmodule_js/common_static/coffee/src/xblock/runtime.v1',
@@ -54,35 +59,36 @@
             'capa/display': 'xmodule_js/src/capa/display',
             'string_utils': 'xmodule_js/common_static/js/src/string_utils',
             'logger': 'xmodule_js/common_static/js/src/logger',
+            'Markdown.Converter': 'js/Markdown.Converter',
+            'Markdown.Editor': 'js/Markdown.Editor',
+            'Markdown.Sanitizer': 'js/Markdown.Sanitizer',
+            '_split': 'js/split',
+            'mathjax_delay_renderer': 'coffee/src/mathjax_delay_renderer',
+            'MathJaxProcessor': 'coffee/src/customwmd',
 
             // Manually specify LMS files that are not converted to RequireJS
             'history': 'js/vendor/history',
-            'js/verify_student/photocapture': 'js/verify_student/photocapture',
             'js/staff_debug_actions': 'js/staff_debug_actions',
+            'js/vendor/jquery.qubit': 'js/vendor/jquery.qubit',
 
             // Backbone classes loaded explicitly until they are converted to use RequireJS
             'js/models/notification': 'js/models/notification',
             'js/views/file_uploader': 'js/views/file_uploader',
             'js/views/notification': 'js/views/notification',
-            'js/groups/models/cohort': 'js/groups/models/cohort',
-            'js/groups/models/content_group': 'js/groups/models/content_group',
-            'js/groups/collections/cohort': 'js/groups/collections/cohort',
-            'js/groups/views/cohort_editor': 'js/groups/views/cohort_editor',
-            'js/groups/views/cohort_form': 'js/groups/views/cohort_form',
-            'js/groups/views/cohorts': 'js/groups/views/cohorts',
             'js/student_account/account': 'js/student_account/account',
-            'js/student_account/views/FormView': 'js/student_account/views/FormView',
-            'js/student_account/models/LoginModel': 'js/student_account/models/LoginModel',
-            'js/student_account/views/LoginView': 'js/student_account/views/LoginView',
-            'js/student_account/models/PasswordResetModel': 'js/student_account/models/PasswordResetModel',
-            'js/student_account/views/PasswordResetView': 'js/student_account/views/PasswordResetView',
-            'js/student_account/models/RegisterModel': 'js/student_account/models/RegisterModel',
-            'js/student_account/views/RegisterView': 'js/student_account/views/RegisterView',
-            'js/student_account/views/AccessView': 'js/student_account/views/AccessView',
-            'js/student_profile/profile': 'js/student_profile/profile',
+            'js/student_profile/views/learner_profile_fields': 'js/student_profile/views/learner_profile_fields',
+            'js/student_profile/views/learner_profile_factory': 'js/student_profile/views/learner_profile_factory',
+            'js/student_profile/views/learner_profile_view': 'js/student_profile/views/learner_profile_view',
+            'js/ccx/schedule': 'js/ccx/schedule',
+
+            // Discussion classes loaded explicitly until they are converted to use RequireJS
+            'DiscussionModuleView': 'xmodule_js/common_static/coffee/src/discussion/discussion_module_view',
 
             // edxnotes
-            'annotator': 'xmodule_js/common_static/js/vendor/edxnotes/annotator-full.min'
+            'annotator_1.2.9': 'xmodule_js/common_static/js/vendor/edxnotes/annotator-full.min',
+
+            // Common edx utils
+            'js/utils/edx.utils.validate': 'xmodule_js/common_static/js/utils/edx.utils.validate'
         },
         shim: {
             'gettext': {
@@ -147,6 +153,10 @@
                 deps: ['jquery'],
                 exports: 'jQuery.fn.simulate'
             },
+            'jquery.timeago': {
+                deps: ['jquery'],
+                exports: 'jQuery.timeago'
+            },
             'jquery.tinymce': {
                 deps: ['jquery', 'tinymce'],
                 exports: 'jQuery.fn.tinymce'
@@ -189,8 +199,32 @@
                 deps: ['backbone'],
                 exports: 'Backbone.Paginator'
             },
+            "backbone-super": {
+                deps: ["backbone"]
+            },
             'youtube': {
                 exports: 'YT'
+            },
+            'Markdown.Converter': {
+                deps: ['mathjax'],
+                exports: 'Markdown.Converter'
+            },
+            'Markdown.Editor': {
+                deps: ['Markdown.Converter'],
+                exports: 'Markdown.Editor'
+            },
+            'Markdown.Sanitizer': {
+                deps: ['Markdown.Converter'],
+                exports: 'Markdown.Sanitizer'
+            },
+            '_split': {
+                exports: '_split'
+            },
+            'MathJaxProcessor': {
+                deps: [
+                    'Markdown.Converter', 'Markdown.Sanitizer', 'Markdown.Editor', '_split', 'mathjax_delay_renderer'
+                ],
+                exports: 'MathJaxProcessor'
             },
             'codemirror': {
                 exports: 'CodeMirror'
@@ -251,18 +285,14 @@
                 exports: 'AjaxPrefix',
                 deps: ['coffee/src/ajax_prefix']
             },
-
+            'coffee/src/instructor_dashboard/student_admin': {
+                exports: 'coffee/src/instructor_dashboard/student_admin',
+                deps: ['jquery', 'underscore', 'coffee/src/instructor_dashboard/util', 'string_utils']
+            },
             // LMS class loaded explicitly until they are converted to use RequireJS
             'js/student_account/account': {
                 exports: 'js/student_account/account',
                 deps: ['jquery', 'underscore', 'backbone', 'gettext', 'jquery.cookie']
-            },
-            'js/student_profile/profile': {
-                exports: 'js/student_profile/profile',
-                deps: ['jquery', 'underscore', 'backbone', 'gettext', 'jquery.cookie']
-            },
-            'js/verify_student/photocapture': {
-                exports: 'js/verify_student/photocapture'
             },
             'js/staff_debug_actions': {
                 exports: 'js/staff_debug_actions',
@@ -276,44 +306,15 @@
                 exports: 'js/shoppingcart/shoppingcart',
                 deps: ['jquery', 'underscore', 'gettext']
             },
+            'js/ccx/schedule': {
+                exports: 'js/ccx/schedule',
+                deps: ['jquery', 'underscore', 'backbone', 'gettext']
+            },
 
             // Backbone classes loaded explicitly until they are converted to use RequireJS
             'js/instructor_dashboard/ecommerce': {
                 exports: 'edx.instructor_dashboard.ecommerce.ExpiryCouponView',
                 deps: ['backbone', 'jquery', 'underscore']
-            },
-            'js/groups/models/cohort': {
-                exports: 'edx.groups.CohortModel',
-                deps: ['backbone']
-            },
-            'js/groups/models/content_group': {
-                exports: 'edx.groups.ContentGroupModel',
-                deps: ['backbone']
-            },
-            'js/groups/collections/cohort': {
-                exports: 'edx.groups.CohortCollection',
-                deps: ['backbone', 'js/groups/models/cohort']
-            },
-            'js/groups/views/cohort_form': {
-                exports: 'edx.groups.CohortFormView',
-                deps: [
-                    'backbone', 'jquery', 'underscore', 'js/views/notification', 'js/models/notification',
-                    'string_utils'
-                ]
-            },
-            'js/groups/views/cohort_editor': {
-                exports: 'edx.groups.CohortEditorView',
-                deps: [
-                    'backbone', 'jquery', 'underscore', 'js/views/notification', 'js/models/notification',
-                    'string_utils', 'js/groups/views/cohort_form'
-                ]
-            },
-            'js/groups/views/cohorts': {
-                exports: 'edx.groups.CohortsView',
-                deps: [
-                    'jquery', 'underscore', 'backbone', 'gettext', 'string_utils', 'js/groups/views/cohort_editor',
-                    'js/views/notification', 'js/models/notification', 'js/views/file_uploader'
-                ]
             },
             'js/models/notification': {
                 exports: 'NotificationModel',
@@ -330,89 +331,6 @@
                     'js/models/notification', 'jquery.fileupload'
                 ]
             },
-            'js/student_account/enrollment': {
-                exports: 'edx.student.account.EnrollmentInterface',
-                deps: ['jquery', 'jquery.cookie']
-            },
-            'js/student_account/emailoptin': {
-                exports: 'edx.student.account.EmailOptInInterface',
-                deps: ['jquery', 'jquery.cookie']
-            },
-            'js/student_account/shoppingcart': {
-                exports: 'edx.student.account.ShoppingCartInterface',
-                deps: ['jquery', 'jquery.cookie', 'underscore']
-            },
-            // Student account registration/login
-            // Loaded explicitly until these are converted to RequireJS
-            'js/student_account/views/FormView': {
-                exports: 'edx.student.account.FormView',
-                deps: ['jquery', 'underscore', 'backbone', 'gettext']
-            },
-            'js/student_account/models/LoginModel': {
-                exports: 'edx.student.account.LoginModel',
-                deps: ['jquery', 'jquery.cookie', 'backbone']
-            },
-            'js/student_account/views/LoginView': {
-                exports: 'edx.student.account.LoginView',
-                deps: [
-                    'jquery',
-                    'jquery.url',
-                    'underscore',
-                    'gettext',
-                    'js/student_account/models/LoginModel',
-                    'js/student_account/views/FormView'
-                ]
-            },
-            'js/student_account/models/PasswordResetModel': {
-                exports: 'edx.student.account.PasswordResetModel',
-                deps: ['jquery', 'jquery.cookie', 'backbone']
-            },
-            'js/student_account/views/PasswordResetView': {
-                exports: 'edx.student.account.PasswordResetView',
-                deps: [
-                    'jquery',
-                    'underscore',
-                    'gettext',
-                    'js/student_account/models/PasswordResetModel',
-                    'js/student_account/views/FormView'
-                ]
-            },
-            'js/student_account/models/RegisterModel': {
-                exports: 'edx.student.account.RegisterModel',
-                deps: ['jquery', 'jquery.cookie', 'backbone']
-            },
-            'js/student_account/views/RegisterView': {
-                exports: 'edx.student.account.RegisterView',
-                deps: [
-                    'jquery',
-                    'jquery.url',
-                    'underscore',
-                    'gettext',
-                    'js/student_account/models/RegisterModel',
-                    'js/student_account/views/FormView'
-                ]
-            },
-            'js/student_account/views/AccessView': {
-                exports: 'edx.student.account.AccessView',
-                deps: [
-                    'jquery',
-                    'underscore',
-                    'backbone',
-                    'gettext',
-                    'history',
-                    'utility',
-                    'js/student_account/views/LoginView',
-                    'js/student_account/views/PasswordResetView',
-                    'js/student_account/views/RegisterView',
-                    'js/student_account/models/LoginModel',
-                    'js/student_account/models/PasswordResetModel',
-                    'js/student_account/models/RegisterModel',
-                    'js/student_account/views/FormView',
-                    'js/student_account/emailoptin',
-                    'js/student_account/enrollment',
-                    'js/student_account/shoppingcart',
-                ]
-            },
             'js/verify_student/models/verification_model': {
                 exports: 'edx.verify_student.VerificationModel',
                 deps: [ 'jquery', 'underscore', 'backbone', 'jquery.cookie' ]
@@ -423,6 +341,16 @@
             },
             'js/verify_student/views/webcam_photo_view': {
                 exports: 'edx.verify_student.WebcamPhotoView',
+                deps: [
+                    'jquery',
+                    'underscore',
+                    'backbone',
+                    'gettext',
+                    'js/verify_student/views/image_input_view'
+                ]
+            },
+            'js/verify_student/views/image_input_view': {
+                exports: 'edx.verify_student.ImageInputView',
                 deps: [ 'jquery', 'underscore', 'backbone', 'gettext' ]
             },
             'js/verify_student/views/step_view': {
@@ -433,7 +361,7 @@
                 exports: 'edx.verify_student.IntroStepView',
                 deps: [
                     'jquery',
-                    'js/verify_student/views/step_view',
+                    'js/verify_student/views/step_view'
                 ]
             },
             'js/verify_student/views/make_payment_step_view': {
@@ -444,7 +372,8 @@
                     'gettext',
                     'jquery.cookie',
                     'jquery.url',
-                    'js/verify_student/views/step_view',
+                    'string_utils',
+                    'js/verify_student/views/step_view'
                 ]
             },
             'js/verify_student/views/payment_confirmation_step_view': {
@@ -453,7 +382,7 @@
                     'jquery',
                     'underscore',
                     'gettext',
-                    'js/verify_student/views/step_view',
+                    'js/verify_student/views/step_view'
                 ]
             },
             'js/verify_student/views/face_photo_step_view': {
@@ -490,7 +419,14 @@
                 exports: 'edx.verify_student.EnrollmentConfirmationStepView',
                 deps: [
                     'jquery',
-                    'js/verify_student/views/step_view',
+                    'js/verify_student/views/step_view'
+                ]
+            },
+            'js/verify_student/views/reverify_success_step_view': {
+                exports: 'edx.verify_student.ReverifySuccessStepView',
+                deps: [
+                    'jquery',
+                    'js/verify_student/views/step_view'
                 ]
             },
             'js/verify_student/views/pay_and_verify_view': {
@@ -510,18 +446,190 @@
                     'js/verify_student/views/enrollment_confirmation_step_view'
                 ]
             },
+            'js/verify_student/views/reverify_view': {
+                exports: 'edx.verify_student.ReverifyView',
+                deps: [
+                    'jquery',
+                    'underscore',
+                    'backbone',
+                    'gettext',
+                    'js/verify_student/models/verification_model',
+                    'js/verify_student/views/face_photo_step_view',
+                    'js/verify_student/views/id_photo_step_view',
+                    'js/verify_student/views/enrollment_confirmation_step_view',
+                    'js/verify_student/views/reverify_success_step_view'
+                ]
+            },
             // Student Notes
-            'annotator': {
+            'annotator_1.2.9': {
                 exports: 'Annotator',
                 deps: ['jquery']
+            },
+            // Discussions
+            'xmodule_js/common_static/coffee/src/discussion/utils': {
+                deps: [
+                    'jquery',
+                    'jquery.timeago',
+                    'underscore',
+                    'backbone',
+                    'gettext',
+                    'MathJaxProcessor',
+                    'URI'
+                ],
+                exports: 'DiscussionUtil',
+                init: function() {
+                    // Set global variables that the discussion code is expecting to be defined
+                    window.Backbone = require('backbone');
+                    window.URI = require('URI');
+                }
+            },
+            'xmodule_js/common_static/coffee/src/discussion/content': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'Content'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/discussion': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils',
+                    'xmodule_js/common_static/coffee/src/discussion/content'
+                ],
+                exports: 'Discussion'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/discussion_filter': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionFilter'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/models/discussion_course_settings': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionCourseSettings'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/models/discussion_user': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionUser'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/discussion_content_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionContentView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_edit_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionThreadEditView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_list_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionThreadListView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_profile_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionThreadProfileView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_show_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionThreadShowView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionThreadView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/discussion_topic_menu_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionTopicMenuView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/discussion_user_profile_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionUserProfileView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/new_post_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'NewPostView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/thread_response_edit_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'ThreadResponseEditView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/thread_response_show_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'ThreadResponseShowView'
+            },
+            'xmodule_js/common_static/coffee/src/discussion/views/thread_response_view': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'ThreadResponseView'
+            },
+            'DiscussionModuleView': {
+                deps: [
+                    'jquery',
+                    'underscore',
+                    'backbone',
+                    'gettext',
+                    'URI',
+                    'xmodule_js/common_static/coffee/src/discussion/content',
+                    'xmodule_js/common_static/coffee/src/discussion/discussion',
+                    'xmodule_js/common_static/coffee/src/discussion/discussion_filter',
+                    'xmodule_js/common_static/coffee/src/discussion/utils',
+                    'xmodule_js/common_static/coffee/src/discussion/models/discussion_course_settings',
+                    'xmodule_js/common_static/coffee/src/discussion/models/discussion_user',
+                    'xmodule_js/common_static/coffee/src/discussion/views/discussion_content_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_edit_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_list_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_profile_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_show_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/discussion_thread_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/discussion_topic_menu_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/discussion_user_profile_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/new_post_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/thread_response_edit_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/thread_response_show_view',
+                    'xmodule_js/common_static/coffee/src/discussion/views/thread_response_view'
+                ],
+                exports: 'DiscussionModuleView'
+            },
+            'xmodule_js/common_static/coffee/spec/discussion/discussion_spec_helper': {
+                deps: [
+                    'xmodule_js/common_static/coffee/src/discussion/utils'
+                ],
+                exports: 'DiscussionSpecHelper'
             }
+
         }
     });
 
     // TODO: why do these need 'lms/include' at the front but the CMS equivalent logic doesn't?
     define([
         // Run the LMS tests
-        'lms/include/js/spec/photocapture_spec.js',
+        'lms/include/js/spec/components/header/header_spec.js',
+        'lms/include/js/spec/components/tabbed/tabbed_view_spec.js',
+        'lms/include/js/spec/components/card/card_spec.js',
         'lms/include/js/spec/staff_debug_actions_spec.js',
         'lms/include/js/spec/views/notification_spec.js',
         'lms/include/js/spec/views/file_uploader_spec.js',
@@ -529,17 +637,30 @@
         'lms/include/js/spec/groups/views/cohorts_spec.js',
         'lms/include/js/spec/shoppingcart/shoppingcart_spec.js',
         'lms/include/js/spec/instructor_dashboard/ecommerce_spec.js',
+        'lms/include/js/spec/instructor_dashboard/student_admin_spec.js',
         'lms/include/js/spec/student_account/account_spec.js',
         'lms/include/js/spec/student_account/access_spec.js',
+        'lms/include/js/spec/student_account/logistration_factory_spec.js',
+        'lms/include/js/spec/student_account/finish_auth_spec.js',
+        'lms/include/js/spec/student_account/hinted_login_spec.js',
         'lms/include/js/spec/student_account/login_spec.js',
+        'lms/include/js/spec/student_account/institution_login_spec.js',
         'lms/include/js/spec/student_account/register_spec.js',
         'lms/include/js/spec/student_account/password_reset_spec.js',
         'lms/include/js/spec/student_account/enrollment_spec.js',
         'lms/include/js/spec/student_account/emailoptin_spec.js',
         'lms/include/js/spec/student_account/shoppingcart_spec.js',
-        'lms/include/js/spec/student_profile/profile_spec.js',
+        'lms/include/js/spec/student_account/account_settings_factory_spec.js',
+        'lms/include/js/spec/student_account/account_settings_fields_spec.js',
+        'lms/include/js/spec/student_account/account_settings_view_spec.js',
+        'lms/include/js/spec/views/fields_spec.js',
+        'lms/include/js/spec/student_profile/learner_profile_factory_spec.js',
+        'lms/include/js/spec/student_profile/learner_profile_view_spec.js',
+        'lms/include/js/spec/student_profile/learner_profile_fields_spec.js',
         'lms/include/js/spec/verify_student/pay_and_verify_view_spec.js',
+        'lms/include/js/spec/verify_student/reverify_view_spec.js',
         'lms/include/js/spec/verify_student/webcam_photo_view_spec.js',
+        'lms/include/js/spec/verify_student/image_input_spec.js',
         'lms/include/js/spec/verify_student/review_photos_step_view_spec.js',
         'lms/include/js/spec/verify_student/make_payment_step_view_spec.js',
         'lms/include/js/spec/edxnotes/utils/logger_spec.js',
@@ -554,14 +675,46 @@
         'lms/include/js/spec/edxnotes/views/tabs/search_results_spec.js',
         'lms/include/js/spec/edxnotes/views/tabs/recent_activity_spec.js',
         'lms/include/js/spec/edxnotes/views/tabs/course_structure_spec.js',
+        'lms/include/js/spec/edxnotes/views/tabs/tags_spec.js',
         'lms/include/js/spec/edxnotes/views/visibility_decorator_spec.js',
-        'lms/include/js/spec/edxnotes/views/toggle_notes_factory_spec.js',
+        'lms/include/js/spec/edxnotes/views/notes_visibility_factory_spec.js',
         'lms/include/js/spec/edxnotes/models/tab_spec.js',
         'lms/include/js/spec/edxnotes/models/note_spec.js',
+        'lms/include/js/spec/edxnotes/plugins/accessibility_spec.js',
         'lms/include/js/spec/edxnotes/plugins/events_spec.js',
         'lms/include/js/spec/edxnotes/plugins/scroller_spec.js',
+        'lms/include/js/spec/edxnotes/plugins/caret_navigation_spec.js',
         'lms/include/js/spec/edxnotes/collections/notes_spec.js',
-        'lms/include/js/spec/search/search_spec.js'
+        'lms/include/js/spec/search/search_spec.js',
+        'lms/include/js/spec/discovery/collections/filters_spec.js',
+        'lms/include/js/spec/discovery/models/course_card_spec.js',
+        'lms/include/js/spec/discovery/models/course_directory_spec.js',
+        'lms/include/js/spec/discovery/models/facet_option_spec.js',
+        'lms/include/js/spec/discovery/models/filter_spec.js',
+        'lms/include/js/spec/discovery/models/search_state_spec.js',
+        'lms/include/js/spec/discovery/views/course_card_spec.js',
+        'lms/include/js/spec/discovery/views/courses_listing_spec.js',
+        'lms/include/js/spec/discovery/views/filter_bar_spec.js',
+        'lms/include/js/spec/discovery/views/refine_sidebar_spec.js',
+        'lms/include/js/spec/discovery/views/search_form_spec.js',
+        'lms/include/js/spec/discovery/discovery_factory_spec.js',
+        'lms/include/js/spec/ccx/schedule_spec.js',
+        'lms/include/support/js/spec/certificates_spec.js',
+        'lms/include/teams/js/spec/collections/topic_collection_spec.js',
+        'lms/include/teams/js/spec/teams_tab_factory_spec.js',
+        'lms/include/teams/js/spec/views/edit_team_spec.js',
+        'lms/include/teams/js/spec/views/edit_team_members_spec.js',
+        'lms/include/teams/js/spec/views/instructor_tools_spec.js',
+        'lms/include/teams/js/spec/views/my_teams_spec.js',
+        'lms/include/teams/js/spec/views/team_card_spec.js',
+        'lms/include/teams/js/spec/views/team_discussion_spec.js',
+        'lms/include/teams/js/spec/views/team_profile_spec.js',
+        'lms/include/teams/js/spec/views/teams_spec.js',
+        'lms/include/teams/js/spec/views/teams_tab_spec.js',
+        'lms/include/teams/js/spec/views/topic_card_spec.js',
+        'lms/include/teams/js/spec/views/topic_teams_spec.js',
+        'lms/include/teams/js/spec/views/topics_spec.js',
+        'lms/include/teams/js/spec/views/team_profile_header_actions_spec.js'
     ]);
 
 }).call(this, requirejs, define);

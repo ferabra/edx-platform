@@ -5,7 +5,6 @@
 from lettuce import world, step
 from component_settings_editor_helpers import enter_xml_in_advanced_problem
 from nose.tools import assert_true, assert_equal
-from opaque_keys.edx.locations import SlashSeparatedCourseKey
 from contentstore.utils import reverse_usage_url
 
 
@@ -50,8 +49,7 @@ def get_an_error_dialog(step):
 
 @step('I can click to go to the unit with the error$')
 def i_click_on_error_dialog(step):
-    world.wait_for_visible(".button.action-primary")
-    world.click_link_by_text('Correct failed component')
+    world.css_click("button.action-primary")
 
     problem_string = unicode(world.scenario_dict['COURSE'].id.make_usage_key("problem", 'ignore'))
     problem_string = u"Problem {}".format(problem_string[:problem_string.rfind('ignore')])

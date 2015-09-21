@@ -3,14 +3,12 @@ import decimal
 import ddt
 from mock import patch
 from django.conf import settings
-from django.test.utils import override_settings
 from django.core.urlresolvers import reverse
 
-from xmodule.modulestore.tests.django_utils import (
-    ModuleStoreTestCase, mixed_store_config
-)
+from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 
 from util.testing import UrlResetMixin
+from embargo.test_utils import restrict_course
 from xmodule.modulestore.tests.factories import CourseFactory
 from course_modes.tests.factories import CourseModeFactory
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
@@ -18,13 +16,7 @@ from student.models import CourseEnrollment
 from course_modes.models import CourseMode, Mode
 
 
-# Since we don't need any XML course fixtures, use a modulestore configuration
-# that disables the XML modulestore.
-MODULESTORE_CONFIG = mixed_store_config(settings.COMMON_TEST_DATA_ROOT, {}, include_xml=False)
-
-
 @ddt.ddt
-@override_settings(MODULESTORE=MODULESTORE_CONFIG)
 @unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
 class CourseModeViewTest(UrlResetMixin, ModuleStoreTestCase):
     @patch.dict(settings.FEATURES, {'MODE_CREATION_FOR_TESTING': True})
@@ -69,6 +61,25 @@ class CourseModeViewTest(UrlResetMixin, ModuleStoreTestCase):
             self.assertRedirects(response, reverse('dashboard'))
         else:
             self.assertEquals(response.status_code, 200)
+
+    def test_no_id_redirect(self):
+        # Create the course modes
+        CourseModeFactory(mode_slug=CourseMode.NO_ID_PROFESSIONAL_MODE, course_id=self.course.id, min_price=100)
+
+        # Enroll the user in the test course
+        CourseEnrollmentFactory(
+            is_active=False,
+            mode=CourseMode.NO_ID_PROFESSIONAL_MODE,
+            course_id=self.course.id,
+            user=self.user
+        )
+
+        # Configure whether we're upgrading or not
+        url = reverse('course_modes_choose', args=[unicode(self.course.id)])
+        response = self.client.get(url)
+        # Check whether we were correctly redirected
+        start_flow_url = reverse('verify_student_start_flow', args=[unicode(self.course.id)])
+        self.assertRedirects(response, start_flow_url)
 
     def test_no_enrollment(self):
         # Create the course modes
@@ -117,9 +128,30 @@ class CourseModeViewTest(UrlResetMixin, ModuleStoreTestCase):
         # TODO: Fix it so that response.templates works w/ mako templates, and then assert
         # that the right template rendered
 
-    def test_professional_enrollment(self):
+    @ddt.data(
+        (['honor', 'verified', 'credit'], True),
+        (['honor', 'verified'], False),
+    )
+    @ddt.unpack
+    def test_credit_upsell_message(self, available_modes, show_upsell):
+        # Create the course modes
+        for mode in available_modes:
+            CourseModeFactory(mode_slug=mode, course_id=self.course.id)
+
+        # Check whether credit upsell is shown on the page
+        # This should *only* be shown when a credit mode is available
+        url = reverse('course_modes_choose', args=[unicode(self.course.id)])
+        response = self.client.get(url)
+
+        if show_upsell:
+            self.assertContains(response, "Credit")
+        else:
+            self.assertNotContains(response, "Credit")
+
+    @ddt.data('professional', 'no-id-professional')
+    def test_professional_enrollment(self, mode):
         # The only course mode is professional ed
-        CourseModeFactory(mode_slug='professional', course_id=self.course.id)
+        CourseModeFactory(mode_slug=mode, course_id=self.course.id, min_price=1)
 
         # Go to the "choose your track" page
         choose_track_url = reverse('course_modes_choose', args=[unicode(self.course.id)])
@@ -134,7 +166,7 @@ class CourseModeViewTest(UrlResetMixin, ModuleStoreTestCase):
         CourseEnrollmentFactory(
             user=self.user,
             is_active=True,
-            mode="professional",
+            mode=mode,
             course_id=unicode(self.course.id),
         )
 
@@ -158,7 +190,8 @@ class CourseModeViewTest(UrlResetMixin, ModuleStoreTestCase):
     def test_choose_mode_redirect(self, course_mode, expected_redirect):
         # Create the course modes
         for mode in ('audit', 'honor', 'verified'):
-            CourseModeFactory(mode_slug=mode, course_id=self.course.id)
+            min_price = 0 if course_mode in ["honor", "audit"] else 1
+            CourseModeFactory(mode_slug=mode, course_id=self.course.id, min_price=min_price)
 
         # Choose the mode (POST request)
         choose_track_url = reverse('course_modes_choose', args=[unicode(self.course.id)])
@@ -235,7 +268,7 @@ class CourseModeViewTest(UrlResetMixin, ModuleStoreTestCase):
 
         self.assertEquals(response.status_code, 200)
 
-        expected_mode = [Mode(u'honor', u'Honor Code Certificate', 0, '', 'usd', None, None)]
+        expected_mode = [Mode(u'honor', u'Honor Code Certificate', 0, '', 'usd', None, None, None)]
         course_mode = CourseMode.modes_for_course(self.course.id)
 
         self.assertEquals(course_mode, expected_mode)
@@ -259,7 +292,7 @@ class CourseModeViewTest(UrlResetMixin, ModuleStoreTestCase):
 
         self.assertEquals(response.status_code, 200)
 
-        expected_mode = [Mode(mode_slug, mode_display_name, min_price, suggested_prices, currency, None, None)]
+        expected_mode = [Mode(mode_slug, mode_display_name, min_price, suggested_prices, currency, None, None, None)]
         course_mode = CourseMode.modes_for_course(self.course.id)
 
         self.assertEquals(course_mode, expected_mode)
@@ -280,11 +313,58 @@ class CourseModeViewTest(UrlResetMixin, ModuleStoreTestCase):
 
         # Create a verified mode
         url = reverse('create_mode', args=[unicode(self.course.id)])
-        response = self.client.get(url, parameters)
+        self.client.get(url, parameters)
 
-        honor_mode = Mode(u'honor', u'Honor Code Certificate', 0, '', 'usd', None, None)
-        verified_mode = Mode(u'verified', u'Verified Certificate', 10, '10,20', 'usd', None, None)
+        honor_mode = Mode(u'honor', u'Honor Code Certificate', 0, '', 'usd', None, None, None)
+        verified_mode = Mode(u'verified', u'Verified Certificate', 10, '10,20', 'usd', None, None, None)
         expected_modes = [honor_mode, verified_mode]
         course_modes = CourseMode.modes_for_course(self.course.id)
 
         self.assertEquals(course_modes, expected_modes)
+
+    @unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
+    @patch.dict(settings.FEATURES, {"IS_EDX_DOMAIN": True})
+    def test_hide_nav(self):
+        # Create the course modes
+        for mode in ["honor", "verified"]:
+            CourseModeFactory(mode_slug=mode, course_id=self.course.id)
+
+        # Load the track selection page
+        url = reverse('course_modes_choose', args=[unicode(self.course.id)])
+        response = self.client.get(url)
+
+        # Verify that the header navigation links are hidden for the edx.org version
+        self.assertNotContains(response, "How it Works")
+        self.assertNotContains(response, "Find courses")
+        self.assertNotContains(response, "Schools & Partners")
+
+
+@unittest.skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
+class TrackSelectionEmbargoTest(UrlResetMixin, ModuleStoreTestCase):
+    """Test embargo restrictions on the track selection page. """
+
+    @patch.dict(settings.FEATURES, {'EMBARGO': True})
+    def setUp(self):
+        super(TrackSelectionEmbargoTest, self).setUp('embargo')
+
+        # Create a course and course modes
+        self.course = CourseFactory.create()
+        CourseModeFactory(mode_slug='honor', course_id=self.course.id)
+        CourseModeFactory(mode_slug='verified', course_id=self.course.id, min_price=10)
+
+        # Create a user and log in
+        self.user = UserFactory.create(username="Bob", email="bob@example.com", password="edx")
+        self.client.login(username=self.user.username, password="edx")
+
+        # Construct the URL for the track selection page
+        self.url = reverse('course_modes_choose', args=[unicode(self.course.id)])
+
+    @patch.dict(settings.FEATURES, {'EMBARGO': True})
+    def test_embargo_restrict(self):
+        with restrict_course(self.course.id) as redirect_url:
+            response = self.client.get(self.url)
+            self.assertRedirects(response, redirect_url)
+
+    def test_embargo_allow(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)

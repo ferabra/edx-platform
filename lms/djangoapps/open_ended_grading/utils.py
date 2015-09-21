@@ -1,7 +1,8 @@
 import logging
+from urllib import urlencode
 
 from xmodule.modulestore import search
-from xmodule.modulestore.django import modulestore, ModuleI18nService
+from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.exceptions import ItemNotFoundError, NoPathToItem
 from xmodule.open_ended_grading_classes.controller_query_service import ControllerQueryService
 from xmodule.open_ended_grading_classes.grading_service_module import GradingServiceError
@@ -9,7 +10,6 @@ from xmodule.open_ended_grading_classes.grading_service_module import GradingSer
 from django.utils.translation import ugettext as _
 from django.conf import settings
 
-from lms.djangoapps.lms_xblock.runtime import LmsModuleSystem
 from edxmako.shortcuts import render_to_string
 
 
@@ -26,18 +26,6 @@ GRADER_DISPLAY_NAMES = {
 STUDENT_ERROR_MESSAGE = _("Error occurred while contacting the grading service.  Please notify course staff.")
 STAFF_ERROR_MESSAGE = _("Error occurred while contacting the grading service.  Please notify your edX point of contact.")
 
-SYSTEM = LmsModuleSystem(
-    static_url='/static',
-    track_function=None,
-    get_module=None,
-    render_template=render_to_string,
-    replace_urls=None,
-    descriptor_runtime=None,
-    services={
-        'i18n': ModuleI18nService(),
-    },
-)
-
 
 def generate_problem_url(problem_url_parts, base_course_url):
     """
@@ -46,6 +34,8 @@ def generate_problem_url(problem_url_parts, base_course_url):
     @param base_course_url: Base url of a given course
     @return: A path to the problem
     """
+    activate_block_id = problem_url_parts[-1]
+    problem_url_parts = problem_url_parts[0:-1]
     problem_url = base_course_url + "/"
     for i, part in enumerate(problem_url_parts):
         if part is not None:
@@ -57,6 +47,7 @@ def generate_problem_url(problem_url_parts, base_course_url):
             if i == 1:
                 problem_url += "courseware/"
             problem_url += part + "/"
+    problem_url += '?{}'.format(urlencode({'activate_block_id': unicode(activate_block_id)}))
     return problem_url
 
 
@@ -85,7 +76,7 @@ def create_controller_query_service():
     """
     Return an instance of a service that can query edX ORA.
     """
-    return ControllerQueryService(settings.OPEN_ENDED_GRADING_INTERFACE, SYSTEM)
+    return ControllerQueryService(settings.OPEN_ENDED_GRADING_INTERFACE, render_to_string)
 
 
 class StudentProblemList(object):

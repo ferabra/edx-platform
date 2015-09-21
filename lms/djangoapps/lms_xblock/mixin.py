@@ -28,13 +28,14 @@ class LmsBlockMixin(XBlockMixin):
     Mixin that defines fields common to all blocks used in the LMS
     """
     hide_from_toc = Boolean(
-        help="Whether to display this module in the table of contents",
+        help=_("Whether to display this module in the table of contents"),
         default=False,
         scope=Scope.settings
     )
     format = String(
-        help="What format this module is in (used for deciding which "
-             "grader to apply, and what to show in the TOC)",
+        # Translators: "TOC" stands for "Table of Contents"
+        help=_("What format this module is in (used for deciding which "
+               "grader to apply, and what to show in the TOC)"),
         scope=Scope.settings,
     )
     chrome = String(
@@ -150,11 +151,13 @@ class LmsBlockMixin(XBlockMixin):
             except NoSuchUserPartitionError:
                 has_invalid_user_partitions = True
             else:
-                for group_id in group_ids:
-                    try:
-                        user_partition.get_group(group_id)
-                    except NoSuchUserPartitionGroupError:
-                        has_invalid_groups = True
+                # Skip the validation check if the partition has been disabled
+                if user_partition.active:
+                    for group_id in group_ids:
+                        try:
+                            user_partition.get_group(group_id)
+                        except NoSuchUserPartitionGroupError:
+                            has_invalid_groups = True
 
         if has_invalid_user_partitions:
             validation.add(

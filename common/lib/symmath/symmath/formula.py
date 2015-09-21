@@ -96,7 +96,7 @@ def my_evalf(expr, chop=False):
     Enhanced sympy evalf to handle lists of expressions
     and catch eval failures without dropping out.
     """
-    if type(expr) == list:
+    if isinstance(expr, list):
         try:
             return [x.evalf(chop=chop) for x in expr]
         except:
@@ -140,7 +140,7 @@ def my_sympify(expr, normphase=False, matrix=False, abcsym=False, do_qubit=False
 
     sexpr = sympify(expr, locals=varset)
     if normphase:	 # remove overall phase if sexpr is a list
-        if type(sexpr) == list:
+        if isinstance(sexpr, list):
             if sexpr[0].is_number:
                 ophase = sympy.sympify('exp(-I*arg(%s))' % sexpr[0])
                 sexpr = [sympy.Mul(x, ophase) for x in sexpr]
@@ -150,10 +150,10 @@ def my_sympify(expr, normphase=False, matrix=False, abcsym=False, do_qubit=False
         Convert a list, or list of lists to a matrix.
         """
         # if expr is a list of lists, and is rectangular, then return Matrix(expr)
-        if not type(expr) == list:
+        if not isinstance(expr, list):
             return expr
         for row in expr:
-            if (not type(row) == list):
+            if not isinstance(row, list):
                 return expr
         rdim = len(expr[0])
         for row in expr:
@@ -230,7 +230,7 @@ class formula(object):
         it, if possible...
         """
 
-        if type(xml) == str or type(xml) == unicode:
+        if isinstance(xml, (str, unicode)):
             xml = etree.fromstring(xml)		# TODO: wrap in try
 
         xml = self.fix_greek_in_mathml(xml)	 # convert greek utf letters to greek spelled out in ascii
@@ -309,7 +309,7 @@ class formula(object):
             with 'scriptN'. There have been problems using script_N or script(N)
             """
             for child in parent:
-                if (gettag(child) == 'mstyle' and child.get('mathvariant') == 'script'):
+                if gettag(child) == 'mstyle' and child.get('mathvariant') == 'script':
                     newchild = etree.Element('mi')
                     newchild.text = 'script%s' % flatten_pmathml(child[0])
                     parent.replace(child, newchild)
@@ -397,7 +397,7 @@ class formula(object):
             """
             for child in parent:
                 # fix msubsup
-                if (gettag(child) == 'msubsup' and len(child) == 3):
+                if gettag(child) == 'msubsup' and len(child) == 3:
                     newchild = etree.Element('msup')
                     newbase = etree.Element('mi')
                     newbase.text = '%s_%s' % (flatten_pmathml(child[0]), flatten_pmathml(child[1]))

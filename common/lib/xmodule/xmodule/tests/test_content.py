@@ -3,7 +3,7 @@
 import os
 import unittest
 import ddt
-from path import path
+from path import Path as path
 from xmodule.contentstore.content import StaticContent, StaticContentStream
 from xmodule.contentstore.content import ContentStore
 from opaque_keys.edx.locations import SlashSeparatedCourseKey, AssetLocation
@@ -50,13 +50,16 @@ injected humour and the like).
 """
 
 
-class Content:
+class Content(object):
+    """
+    A class with location and content_type members
+    """
     def __init__(self, location, content_type):
         self.location = location
         self.content_type = content_type
 
 
-class FakeGridFsItem:
+class FakeGridFsItem(object):
     """
     This class provides the basic methods to get data from a GridFS item
     """

@@ -16,11 +16,9 @@ from mock import Mock, patch
 from edxval.api import create_profile, create_video, get_video_info
 
 from contentstore.models import VideoUploadConfig
-from contentstore.views.videos import KEY_EXPIRATION_IN_SECONDS, VIDEO_ASSET_TYPE, StatusDisplayStrings
+from contentstore.views.videos import KEY_EXPIRATION_IN_SECONDS, StatusDisplayStrings
 from contentstore.tests.utils import CourseTestCase
 from contentstore.utils import reverse_course_url
-from xmodule.assetstore import AssetMetadata
-from xmodule.modulestore.django import modulestore
 from xmodule.modulestore.tests.factories import CourseFactory
 
 
@@ -40,26 +38,14 @@ class VideoUploadTestMixin(object):
             "course_video_upload_token": self.test_token,
         }
         self.save_course()
-        self.profiles = [
-            {
-                "profile_name": "profile1",
-                "extension": "mp4",
-                "width": 640,
-                "height": 480,
-            },
-            {
-                "profile_name": "profile2",
-                "extension": "mp4",
-                "width": 1920,
-                "height": 1080,
-            },
-        ]
+        self.profiles = ["profile1", "profile2"]
         self.previous_uploads = [
             {
                 "edx_video_id": "test1",
                 "client_video_id": "test1.mp4",
                 "duration": 42.0,
                 "status": "upload",
+                "courses": [unicode(self.course.id)],
                 "encoded_videos": [],
             },
             {
@@ -67,6 +53,7 @@ class VideoUploadTestMixin(object):
                 "client_video_id": "test2.mp4",
                 "duration": 128.0,
                 "status": "file_complete",
+                "courses": [unicode(self.course.id)],
                 "encoded_videos": [
                     {
                         "profile": "profile1",
@@ -87,6 +74,7 @@ class VideoUploadTestMixin(object):
                 "client_video_id": u"nón-ascii-näme.mp4",
                 "duration": 256.0,
                 "status": "transcode_active",
+                "courses": [unicode(self.course.id)],
                 "encoded_videos": [
                     {
                         "profile": "profile1",
@@ -97,16 +85,25 @@ class VideoUploadTestMixin(object):
                 ]
             },
         ]
+        # Ensure every status string is tested
+        self.previous_uploads += [
+            {
+                "edx_video_id": "status_test_{}".format(status),
+                "client_video_id": "status_test.mp4",
+                "duration": 3.14,
+                "status": status,
+                "courses": [unicode(self.course.id)],
+                "encoded_videos": [],
+            }
+            for status in (
+                StatusDisplayStrings._STATUS_MAP.keys() +  # pylint:disable=protected-access
+                ["non_existent_status"]
+            )
+        ]
         for profile in self.profiles:
             create_profile(profile)
         for video in self.previous_uploads:
             create_video(video)
-            modulestore().save_asset_metadata(
-                AssetMetadata(
-                    self.course.id.make_asset_key(VIDEO_ASSET_TYPE, video["edx_video_id"])
-                ),
-                self.user.id
-            )
 
     def _get_previous_upload(self, edx_video_id):
         """Returns the previous upload with the given video id."""
@@ -288,19 +285,13 @@ class VideosHandlerTestCase(VideoUploadTestMixin, CourseTestCase):
                 headers={"Content-Type": file_info["content_type"]}
             )
 
-            # Ensure asset store was updated
-            self.assertIsNotNone(
-                modulestore().find_asset_metadata(
-                    self.course.id.make_asset_key(VIDEO_ASSET_TYPE, video_id)
-                )
-            )
-
             # Ensure VAL was updated
             val_info = get_video_info(video_id)
             self.assertEqual(val_info["status"], "upload")
             self.assertEqual(val_info["client_video_id"], file_info["file_name"])
             self.assertEqual(val_info["status"], "upload")
             self.assertEqual(val_info["duration"], 0)
+            self.assertEqual(val_info["courses"], [unicode(self.course.id)])
 
             # Ensure response is correct
             response_file = response_obj["files"][i]

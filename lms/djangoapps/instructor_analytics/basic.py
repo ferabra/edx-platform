@@ -5,16 +5,20 @@ Serve miscellaneous course and student data
 """
 import json
 from shoppingcart.models import (
-    PaidCourseRegistration, CouponRedemption, Invoice, CourseRegCodeItem,
-    OrderTypes, RegistrationCodeRedemption, CourseRegistrationCode
+    PaidCourseRegistration, CouponRedemption, CourseRegCodeItem,
+    RegistrationCodeRedemption, CourseRegistrationCodeInvoiceItem
 )
 from django.db.models import Q
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.urlresolvers import reverse
-import xmodule.graders as xmgraders
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.urlresolvers import reverse
+from opaque_keys.edx.keys import UsageKey
+import xmodule.graders as xmgraders
 from microsite_configuration import microsite
+from student.models import CourseEnrollmentAllowed
+from edx_proctoring.api import get_all_exam_attempts
+from courseware.models import StudentModule
 
 
 STUDENT_FEATURES = ('id', 'username', 'first_name', 'last_name', 'is_staff', 'email')
@@ -32,7 +36,7 @@ SALE_ORDER_FEATURES = ('id', 'company_name', 'company_contact_name', 'company_co
                        'bill_to_country', 'order_type',)
 
 AVAILABLE_FEATURES = STUDENT_FEATURES + PROFILE_FEATURES
-COURSE_REGISTRATION_FEATURES = ('code', 'course_id', 'created_by', 'created_at')
+COURSE_REGISTRATION_FEATURES = ('code', 'course_id', 'created_by', 'created_at', 'is_valid')
 COUPON_FEATURES = ('code', 'course_id', 'percentage_discount', 'description', 'expiration_date', 'is_active')
 
 
@@ -71,6 +75,7 @@ def sale_order_record_features(course_id, features):
 
         quantity = int(getattr(purchased_course, 'qty'))
         unit_cost = float(getattr(purchased_course, 'unit_cost'))
+        sale_order_dict.update({"quantity": quantity})
         sale_order_dict.update({"total_amount": quantity * unit_cost})
 
         sale_order_dict.update({"logged_in_username": purchased_course.order.user.username})
@@ -79,6 +84,13 @@ def sale_order_record_features(course_id, features):
         # Extracting OrderItem information of unit_cost, list_price and status
         order_item_dict = dict((feature, getattr(purchased_course, feature, None))
                                for feature in order_item_features)
+
+        order_item_dict['list_price'] = purchased_course.get_list_price()
+
+        sale_order_dict.update(
+            {"total_discount": (order_item_dict['list_price'] - order_item_dict['unit_cost']) * quantity}
+        )
+
         order_item_dict.update({"coupon_code": 'N/A'})
 
         coupon_redemption = CouponRedemption.objects.select_related('coupon').filter(order_id=purchased_course.order_id)
@@ -110,22 +122,25 @@ def sale_record_features(course_id, features):
         {'company_name': 'group_C', 'total_codes': '3', total_amount:'total_amount3 in decimal'.}
     ]
     """
-    sales = Invoice.objects.filter(course_id=course_id)
+    sales = CourseRegistrationCodeInvoiceItem.objects.select_related('invoice').filter(course_id=course_id)
 
     def sale_records_info(sale, features):
-        """ convert sales records to dictionary """
+        """
+        Convert sales records to dictionary
 
+        """
+        invoice = sale.invoice
         sale_features = [x for x in SALE_FEATURES if x in features]
         course_reg_features = [x for x in COURSE_REGISTRATION_FEATURES if x in features]
 
         # Extracting sale information
-        sale_dict = dict((feature, getattr(sale, feature))
+        sale_dict = dict((feature, getattr(invoice, feature))
                          for feature in sale_features)
 
         total_used_codes = RegistrationCodeRedemption.objects.filter(
             registration_code__in=sale.courseregistrationcode_set.all()
         ).count()
-        sale_dict.update({"invoice_number": getattr(sale, 'id')})
+        sale_dict.update({"invoice_number": getattr(invoice, 'id')})
         sale_dict.update({"total_codes": sale.courseregistrationcode_set.all().count()})
         sale_dict.update({'total_used_codes': total_used_codes})
 
@@ -206,7 +221,52 @@ def enrolled_students_features(course_key, features):
     return [extract_student(student, features) for student in students]
 
 
-def coupon_codes_features(features, coupons_list):
+def list_may_enroll(course_key, features):
+    """
+    Return info about students who may enroll in a course as a dict.
+
+    list_may_enroll(course_key, ['email'])
+    would return [
+        {'email': 'email1'}
+        {'email': 'email2'}
+        {'email': 'email3'}
+    ]
+
+    Note that result does not include students who may enroll and have
+    already done so.
+    """
+    may_enroll_and_unenrolled = CourseEnrollmentAllowed.may_enroll_and_unenrolled(course_key)
+
+    def extract_student(student, features):
+        """
+        Build dict containing information about a single student.
+        """
+        return dict((feature, getattr(student, feature)) for feature in features)
+
+    return [extract_student(student, features) for student in may_enroll_and_unenrolled]
+
+
+def get_proctored_exam_results(course_key, features):
+    """
+    Return info about proctored exam results in a course as a dict.
+    """
+    def extract_student(exam_attempt, features):
+        """
+        Build dict containing information about a single student exam_attempt.
+        """
+        proctored_exam = dict(
+            (feature, exam_attempt.get(feature)) for feature in features if feature in exam_attempt
+        )
+        proctored_exam.update({'exam_name': exam_attempt.get('proctored_exam').get('exam_name')})
+        proctored_exam.update({'user_email': exam_attempt.get('user').get('email')})
+
+        return proctored_exam
+
+    exam_attempts = get_all_exam_attempts(course_key)
+    return [extract_student(exam_attempt, features) for exam_attempt in exam_attempts]
+
+
+def coupon_codes_features(features, coupons_list, course_id):
     """
     Return list of Coupon Codes as dictionaries.
 
@@ -225,18 +285,73 @@ def coupon_codes_features(features, coupons_list):
         coupon_features = [x for x in COUPON_FEATURES if x in features]
 
         coupon_dict = dict((feature, getattr(coupon, feature)) for feature in coupon_features)
-        coupon_dict['code_redeemed_count'] = coupon.couponredemption_set.filter(
+        coupon_redemptions = coupon.couponredemption_set.filter(
             order__status="purchased"
-        ).count()
+        )
 
-        # we have to capture the redeemed_by value in the case of the downloading and spent registration
+        coupon_dict['code_redeemed_count'] = coupon_redemptions.count()
+
+        seats_purchased_using_coupon = 0
+        total_discounted_amount = 0
+        for coupon_redemption in coupon_redemptions:
+            cart_items = coupon_redemption.order.orderitem_set.select_subclasses()
+            found_items = []
+            for item in cart_items:
+                if getattr(item, 'course_id', None):
+                    if item.course_id == course_id:
+                        found_items.append(item)
+            for order_item in found_items:
+                seats_purchased_using_coupon += order_item.qty
+                discounted_amount_for_item = float(
+                    order_item.list_price * order_item.qty) * (float(coupon.percentage_discount) / 100)
+                total_discounted_amount += discounted_amount_for_item
+
+        coupon_dict['total_discounted_seats'] = seats_purchased_using_coupon
+        coupon_dict['total_discounted_amount'] = total_discounted_amount
+
+        # We have to capture the redeemed_by value in the case of the downloading and spent registration
         # codes csv. In the case of active and generated registration codes the redeemed_by value will be None.
-        #  They have not been redeemed yet
+        # They have not been redeemed yet
 
         coupon_dict['expiration_date'] = coupon.display_expiry_date
         coupon_dict['course_id'] = coupon_dict['course_id'].to_deprecated_string()
         return coupon_dict
     return [extract_coupon(coupon, features) for coupon in coupons_list]
+
+
+def list_problem_responses(course_key, problem_location):
+    """
+    Return responses to a given problem as a dict.
+
+    list_problem_responses(course_key, problem_location)
+
+    would return [
+        {'username': u'user1', 'state': u'...'},
+        {'username': u'user2', 'state': u'...'},
+        {'username': u'user3', 'state': u'...'},
+    ]
+
+    where `state` represents a student's response to the problem
+    identified by `problem_location`.
+    """
+    problem_key = UsageKey.from_string(problem_location)
+    # Are we dealing with an "old-style" problem location?
+    run = getattr(problem_key, 'run')
+    if not run:
+        problem_key = course_key.make_usage_key_from_deprecated_string(problem_location)
+    if problem_key.course_key != course_key:
+        return []
+
+    smdat = StudentModule.objects.filter(
+        course_id=course_key,
+        module_state_key=problem_key
+    )
+    smdat = smdat.order_by('student')
+
+    return [
+        {'username': response.student.username, 'state': response.state}
+        for response in smdat
+    ]
 
 
 def course_registration_features(features, registration_codes, csv_type):
@@ -261,11 +376,11 @@ def course_registration_features(features, registration_codes, csv_type):
 
         course_registration_dict = dict((feature, getattr(registration_code, feature)) for feature in registration_features)
         course_registration_dict['company_name'] = None
-        if registration_code.invoice:
-            course_registration_dict['company_name'] = getattr(registration_code.invoice, 'company_name')
+        if registration_code.invoice_item:
+            course_registration_dict['company_name'] = getattr(registration_code.invoice_item.invoice, 'company_name')
         course_registration_dict['redeemed_by'] = None
-        if registration_code.invoice:
-            sale_invoice = Invoice.objects.get(id=registration_code.invoice_id)
+        if registration_code.invoice_item:
+            sale_invoice = registration_code.invoice_item.invoice
             course_registration_dict['invoice_id'] = sale_invoice.id
             course_registration_dict['purchaser'] = sale_invoice.recipient_name
             course_registration_dict['customer_reference_number'] = sale_invoice.customer_reference_number

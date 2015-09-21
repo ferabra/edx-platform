@@ -1,6 +1,6 @@
-define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils", "js/views/pages/course_outline",
+define(["jquery", "common/js/spec_helpers/ajax_helpers", "common/js/components/utils/view_utils", "js/views/pages/course_outline",
         "js/models/xblock_outline_info", "js/utils/date_utils", "js/spec_helpers/edit_helpers",
-        "js/common_helpers/template_helpers"],
+        "common/js/spec_helpers/template_helpers"],
     function($, AjaxHelpers, ViewUtils, CourseOutlinePage, XBlockOutlineInfo, DateUtils, EditHelpers, TemplateHelpers) {
 
         describe("CourseOutlinePage", function() {
@@ -8,7 +8,7 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                 getItemsOfType, getItemHeaders, verifyItemsExpanded, expandItemsAndVerifyState,
                 collapseItemsAndVerifyState, createMockCourseJSON, createMockSectionJSON, createMockSubsectionJSON,
                 verifyTypePublishable, mockCourseJSON, mockEmptyCourseJSON, mockSingleSectionCourseJSON,
-                createMockVerticalJSON, createMockIndexJSON,
+                createMockVerticalJSON, createMockIndexJSON, mockCourseEntranceExamJSON
                 mockOutlinePage = readFixtures('mock/mock-course-outline-page.underscore'),
                 mockRerunNotification = readFixtures('mock/mock-course-rerun-notification.underscore');
 
@@ -17,6 +17,7 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                     id: 'mock-course',
                     display_name: 'Mock Course',
                     category: 'course',
+                    enable_proctored_exams: true,
                     studio_url: '/course/slashes:MockCourse',
                     is_container: true,
                     has_changes: false,
@@ -90,16 +91,16 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
 
             createMockIndexJSON = function(option) {
                 if(option){
-                    return {
-                        status: 200,
-                        responseText: ''
-                    };
+                    return JSON.stringify({
+                        "developer_message" : "Course has been successfully reindexed.",
+                        "user_message": "Course has been successfully reindexed."
+                    });
                 }
                 else {
-                    return {
-                        status: 500,
-                        responseText: JSON.stringify('Could not index item: course/slashes:mock+item')
-                    };
+                    return JSON.stringify({
+                        "developer_message" : "Could not reindex course.",
+                        "user_message": "Could not reindex course."
+                    });
                 }
             };
 
@@ -214,7 +215,7 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                     'course-outline', 'xblock-string-field-editor', 'modal-button',
                     'basic-modal', 'course-outline-modal', 'release-date-editor',
                     'due-date-editor', 'grading-editor', 'publish-editor',
-                    'staff-lock-editor'
+                    'staff-lock-editor', 'timed-examination-preference-editor'
                 ]);
                 appendSetFixtures(mockOutlinePage);
                 mockCourseJSON = createMockCourseJSON({}, [
@@ -228,6 +229,14 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                 mockSingleSectionCourseJSON = createMockCourseJSON({}, [
                     createMockSectionJSON()
                 ]);
+                mockCourseEntranceExamJSON = createMockCourseJSON({}, [
+                    createMockSectionJSON({}, [
+                        createMockSubsectionJSON({'is_header_visible': false}, [
+                            createMockVerticalJSON()
+                        ])
+                    ])
+                ]);
+
             });
 
             afterEach(function () {
@@ -259,6 +268,11 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                     verifyItemsExpanded('subsection', false);
                     expect(getItemsOfType('unit')).not.toExist();
                 });
+
+                it('unit initially exist for entrance exam', function() {
+                    createCourseOutlinePage(this, mockCourseEntranceExamJSON);
+                    expect(getItemsOfType('unit')).toExist();
+                });
             });
 
             describe("Rerun notification", function () {
@@ -268,7 +282,7 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                     expect($('.wrapper-alert-announcement')).not.toHaveClass('is-hidden');
                     $('.dismiss-button').click();
                     AjaxHelpers.expectJsonRequest(requests, 'DELETE', 'dummy_dismiss_url');
-                    AjaxHelpers.respondToDelete(requests);
+                    AjaxHelpers.respondWithNoContent(requests);
                     expect($('.wrapper-alert-announcement')).toHaveClass('is-hidden');
                 });
             });
@@ -324,26 +338,32 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                     verifyItemsExpanded('section', true);
                 });
 
-                it('can start reindex of a course - respond success', function() {
+                it('can start reindex of a course', function() {
                     createCourseOutlinePage(this, mockSingleSectionCourseJSON);
                     var reindexSpy = spyOn(outlinePage, 'startReIndex').andCallThrough();
                     var successSpy = spyOn(outlinePage, 'onIndexSuccess').andCallThrough();
                     var reindexButton = outlinePage.$('.button.button-reindex');
+                    var test_url = '/course/5/search_reindex';
+                    reindexButton.attr('href', test_url)
                     reindexButton.trigger('click');
-                    AjaxHelpers.expectJsonRequest(requests, 'GET', '/course_search_index/5');
+                    AjaxHelpers.expectJsonRequest(requests, 'GET', test_url);
                     AjaxHelpers.respondWithJson(requests, createMockIndexJSON(true));
                     expect(reindexSpy).toHaveBeenCalled();
                     expect(successSpy).toHaveBeenCalled();
                 });
 
-                it('can start reindex of a course - respond fail', function() {
+                it('shows an error message when reindexing fails', function() {
                     createCourseOutlinePage(this, mockSingleSectionCourseJSON);
                     var reindexSpy = spyOn(outlinePage, 'startReIndex').andCallThrough();
+                    var errorSpy = spyOn(outlinePage, 'onIndexError').andCallThrough();
                     var reindexButton = outlinePage.$('.button.button-reindex');
+                    var test_url = '/course/5/search_reindex';
+                    reindexButton.attr('href', test_url)
                     reindexButton.trigger('click');
-                    AjaxHelpers.expectJsonRequest(requests, 'GET', '/course_search_index/5');
-                    AjaxHelpers.respondWithJson(requests, createMockIndexJSON(false));
+                    AjaxHelpers.expectJsonRequest(requests, 'GET', test_url);
+                    AjaxHelpers.respondWithError(requests, 500, createMockIndexJSON(false));
                     expect(reindexSpy).toHaveBeenCalled();
+                    expect(errorSpy).toHaveBeenCalled();
                 });
             });
 
@@ -563,7 +583,7 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
             });
 
             describe("Subsection", function() {
-                var getDisplayNameWrapper, setEditModalValues, mockServerValuesJson;
+                var getDisplayNameWrapper, setEditModalValues, mockServerValuesJson, setModalTimedExaminationPreferenceValues;
 
                 getDisplayNameWrapper = function() {
                     return getItemHeaders('subsection').find('.wrapper-xblock-field');
@@ -574,6 +594,16 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                     $("#due_date").val(due_date);
                     $("#grading_type").val(grading_type);
                     $("#staff_lock").prop('checked', is_locked);
+                };
+
+                setModalTimedExaminationPreferenceValues = function(
+                    is_timed_examination,
+                    time_limit,
+                    is_exam_proctoring_enabled
+                ){
+                    $("#id_time_limit").val(time_limit);
+                    $("#id_exam_proctoring").prop('checked', is_exam_proctoring_enabled);
+                    $("#id_timed_examination").prop('checked', is_timed_examination);
                 };
 
                 // Contains hard-coded dates because dates are presented in different formats.
@@ -588,7 +618,11 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                             format: "Lab",
                             due: "2014-07-10T00:00:00Z",
                             has_explicit_staff_lock: true,
-                            staff_only_message: true
+                            staff_only_message: true,
+                            "is_time_limited": true,
+                            "is_practice_exam": false,
+                            "is_proctored_enabled": true,
+                            "default_time_limit_minutes": 150
                         }, [
                             createMockVerticalJSON({
                                 has_changes: true,
@@ -663,6 +697,7 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                     createCourseOutlinePage(this, mockCourseJSON, false);
                     outlinePage.$('.outline-subsection .configure-button').click();
                     setEditModalValues("7/9/2014", "7/10/2014", "Lab", true);
+                    setModalTimedExaminationPreferenceValues(true, "02:30", true);
                     $(".wrapper-modal-window .action-save").click();
                     AjaxHelpers.expectJsonRequest(requests, 'POST', '/xblock/mock-subsection', {
                         "graderType":"Lab",
@@ -670,7 +705,11 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                         "metadata":{
                             "visible_to_staff_only": true,
                             "start":"2014-07-09T00:00:00.000Z",
-                            "due":"2014-07-10T00:00:00.000Z"
+                            "due":"2014-07-10T00:00:00.000Z",
+                            "is_time_limited": true,
+                            "is_practice_exam": false,
+                            "is_proctored_enabled": true,
+                            "default_time_limit_minutes": 150
                         }
                     });
                     expect(requests[0].requestHeaders['X-HTTP-Method-Override']).toBe('PATCH');
@@ -701,6 +740,28 @@ define(["jquery", "js/common_helpers/ajax_helpers", "js/views/utils/view_utils",
                     expect($("#due_date").val()).toBe('7/10/2014');
                     expect($("#grading_type").val()).toBe('Lab');
                     expect($("#staff_lock").is(":checked")).toBe(true);
+                    expect($("#id_timed_examination").is(":checked")).toBe(true);
+                    expect($("#id_exam_proctoring").is(":checked")).toBe(true);
+                    expect($("#is_practice_exam").is(":checked")).toBe(false);
+                    expect($("#id_time_limit").val()).toBe("02:30");
+                });
+
+                it('can be edited and enable/disable proctoring fields, when time_limit checkbox value changes', function() {
+                    createCourseOutlinePage(this, mockCourseJSON, false);
+                    outlinePage.$('.outline-subsection .configure-button').click();
+                    setEditModalValues("7/9/2014", "7/10/2014", "Lab", true);
+                    setModalTimedExaminationPreferenceValues(true, "02:30", true);
+                    var target = $('#id_timed_examination');
+                    target.attr("checked","checked");
+                    target.click();
+                    expect($('#id_exam_proctoring')).toHaveAttr('disabled','disabled');
+                    expect($('#id_time_limit')).toHaveAttr('disabled','disabled');
+                    target.removeAttr("checked");
+                    target.click();
+                    expect($('#id_exam_proctoring')).not.toHaveAttr('disabled','disabled');
+                    expect($('#id_time_limit')).not.toHaveAttr('disabled','disabled');
+                    expect($('#id_time_limit').val()).toBe('00:30');
+                    expect($('#id_exam_proctoring')).not.toHaveAttr('checked');
                 });
 
                 it('release date, due date, grading type, and staff lock can be cleared.', function() {

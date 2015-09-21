@@ -2,28 +2,37 @@
 Unit tests for Ecommerce feature flag in new instructor dashboard.
 """
 
-from django.core.urlresolvers import reverse
 import datetime
+
 import pytz
-from django.test.utils import override_settings
-from mock import patch
+
+from django.core.urlresolvers import reverse
+from nose.plugins.attrib import attr
 
 from course_modes.models import CourseMode
-from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE
 from student.roles import CourseFinanceAdminRole
-from shoppingcart.models import Coupon, PaidCourseRegistration, CourseRegistrationCode
+from shoppingcart.models import Coupon, CourseRegistrationCode
 from student.tests.factories import AdminFactory
-from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
+from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory
 
 
-@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
-class TestECommerceDashboardViews(ModuleStoreTestCase):
+@attr('shard_1')
+class TestECommerceDashboardViews(SharedModuleStoreTestCase):
     """
     Check for E-commerce view on the new instructor dashboard
     """
+    @classmethod
+    def setUpClass(cls):
+        super(TestECommerceDashboardViews, cls).setUpClass()
+        cls.course = CourseFactory.create()
+
+        # URL for instructor dash
+        cls.url = reverse('instructor_dashboard', kwargs={'course_id': cls.course.id.to_deprecated_string()})
+        cls.e_commerce_link = '<a href="" data-section="e-commerce">E-Commerce</a>'
+
     def setUp(self):
-        self.course = CourseFactory.create()
+        super(TestECommerceDashboardViews, self).setUp()
 
         # Create instructor account
         self.instructor = AdminFactory.create()
@@ -33,16 +42,7 @@ class TestECommerceDashboardViews(ModuleStoreTestCase):
             mode_display_name='honor', min_price=10, currency='usd'
         )
         mode.save()
-        # URL for instructor dash
-        self.url = reverse('instructor_dashboard', kwargs={'course_id': self.course.id.to_deprecated_string()})
-        self.e_commerce_link = '<a href="" data-section="e-commerce">E-Commerce</a>'
         CourseFinanceAdminRole(self.course.id).add_users(self.instructor)
-
-    def tearDown(self):
-        """
-        Undo all patches.
-        """
-        patch.stopall()
 
     def test_pass_e_commerce_tab_in_instructor_dashboard(self):
         """
@@ -51,7 +51,7 @@ class TestECommerceDashboardViews(ModuleStoreTestCase):
         response = self.client.get(self.url)
         self.assertTrue(self.e_commerce_link in response.content)
         # Coupons should show up for White Label sites with priced honor modes.
-        self.assertTrue('Coupons' in response.content)
+        self.assertTrue('Coupon Code List' in response.content)
 
     def test_user_has_finance_admin_rights_in_e_commerce_tab(self):
         response = self.client.get(self.url)
@@ -82,7 +82,7 @@ class TestECommerceDashboardViews(ModuleStoreTestCase):
         course_honor_mode = CourseMode.mode_for_course(self.course.id, 'honor')
 
         price = course_honor_mode.min_price
-        self.assertTrue('Course Price: <span>$' + str(price) + '</span>' in response.content)
+        self.assertTrue('Course price per seat: <span>$' + str(price) + '</span>' in response.content)
         self.assertFalse('+ Set Price</a></span>' in response.content)
 
         # removing the course finance_admin role of login user
@@ -114,7 +114,7 @@ class TestECommerceDashboardViews(ModuleStoreTestCase):
         url = reverse('instructor_dashboard', kwargs={'course_id': self.course.id.to_deprecated_string()})
         response = self.client.get(url)
 
-        self.assertTrue('Course Price: <span>$' + str(price) + '</span>' in response.content)
+        self.assertTrue('Course price per seat: <span>$' + str(price) + '</span>' in response.content)
 
     def test_user_admin_set_course_price(self):
         """

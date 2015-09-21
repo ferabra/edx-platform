@@ -14,6 +14,7 @@ from track.middleware import TrackMiddleware
 class TrackMiddlewareTestCase(TestCase):
 
     def setUp(self):
+        super(TrackMiddlewareTestCase, self).setUp()
         self.track_middleware = TrackMiddleware()
         self.request_factory = RequestFactory()
 
@@ -53,6 +54,8 @@ class TrackMiddlewareTestCase(TestCase):
     def test_default_request_context(self):
         context = self.get_context_for_path('/courses/')
         self.assertEquals(context, {
+            'accept_language': '',
+            'referer': '',
             'user_id': '',
             'session': '',
             'username': '',
@@ -133,12 +136,16 @@ class TrackMiddlewareTestCase(TestCase):
     def test_request_headers(self):
         ip_address = '10.0.0.0'
         user_agent = 'UnitTest/1.0'
+        client_id_header = '123.123'
 
-        factory = RequestFactory(REMOTE_ADDR=ip_address, HTTP_USER_AGENT=user_agent)
+        factory = RequestFactory(
+            REMOTE_ADDR=ip_address, HTTP_USER_AGENT=user_agent, HTTP_X_EDX_GA_CLIENT_ID=client_id_header
+        )
         request = factory.get('/some-path')
         context = self.get_context_for_request(request)
 
         self.assert_dict_subset(context, {
             'ip': ip_address,
             'agent': user_agent,
+            'client_id': client_id_header
         })

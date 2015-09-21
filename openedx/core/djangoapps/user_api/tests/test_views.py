@@ -4,25 +4,39 @@ import datetime
 import base64
 import json
 import re
+from unittest import skipUnless, SkipTest
+
+import ddt
+import httpretty
+from pytz import UTC
+import mock
 
 from django.conf import settings
 from django.core.urlresolvers import reverse
 from django.core import mail
+from django.contrib.auth.models import User
 from django.test import TestCase
+from django.test.testcases import TransactionTestCase
 from django.test.utils import override_settings
-from unittest import SkipTest, skipUnless
-import ddt
-from pytz import UTC
-import mock
-from xmodule.modulestore.tests.factories import CourseFactory
+from django.test.client import RequestFactory
 
-from student.tests.factories import UserFactory
-from unittest import SkipTest
-from django_comment_common import models
+from social.apps.django_app.default.models import UserSocialAuth
+
 from opaque_keys.edx.locations import SlashSeparatedCourseKey
-from third_party_auth.tests.testutil import simulate_running_pipeline
 
-from ..api import account as account_api, profile as profile_api
+from django_comment_common import models
+from student.tests.factories import UserFactory
+from third_party_auth.tests.testutil import simulate_running_pipeline, ThirdPartyAuthTestMixin
+from third_party_auth.tests.utils import (
+    ThirdPartyOAuthTestMixin, ThirdPartyOAuthTestMixinFacebook, ThirdPartyOAuthTestMixinGoogle
+)
+from xmodule.modulestore.tests.factories import CourseFactory
+from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
+from ..accounts.api import get_account_settings
+from ..accounts import (
+    NAME_MAX_LENGTH, EMAIL_MIN_LENGTH, EMAIL_MAX_LENGTH, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH,
+    USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH
+)
 from ..models import UserOrgTag
 from ..tests.factories import UserPreferenceFactory
 from ..tests.test_constants import SORTED_COUNTRIES
@@ -65,7 +79,7 @@ class ApiTestCase(TestCase):
         """Given a user preference object, get the URI for the corresponding resource"""
         prefs = self.get_json(USER_PREFERENCE_LIST_URI)["results"]
         for pref in prefs:
-            if (pref["user"]["id"] == target_pref.user.id and pref["key"] == target_pref.key):
+            if pref["user"]["id"] == target_pref.user.id and pref["key"] == target_pref.key:
                 return pref["url"]
         self.fail()
 
@@ -615,8 +629,8 @@ class LoginSessionViewTest(ApiTestCase):
                     platform_name=settings.PLATFORM_NAME
                 ),
                 "restrictions": {
-                    "min_length": account_api.EMAIL_MIN_LENGTH,
-                    "max_length": account_api.EMAIL_MAX_LENGTH
+                    "min_length": EMAIL_MIN_LENGTH,
+                    "max_length": EMAIL_MAX_LENGTH
                 },
                 "errorMessages": {},
             },
@@ -629,11 +643,22 @@ class LoginSessionViewTest(ApiTestCase):
                 "placeholder": "",
                 "instructions": "",
                 "restrictions": {
-                    "min_length": account_api.PASSWORD_MIN_LENGTH,
-                    "max_length": account_api.PASSWORD_MAX_LENGTH
+                    "min_length": PASSWORD_MIN_LENGTH,
+                    "max_length": PASSWORD_MAX_LENGTH
                 },
                 "errorMessages": {},
-            }
+            },
+            {
+                "name": "remember",
+                "defaultValue": False,
+                "type": "checkbox",
+                "required": False,
+                "label": "Remember me",
+                "placeholder": "",
+                "instructions": "",
+                "restrictions": {},
+                "errorMessages": {},
+            },
         ])
 
     def test_login(self):
@@ -766,8 +791,8 @@ class PasswordResetViewTest(ApiTestCase):
                     platform_name=settings.PLATFORM_NAME
                 ),
                 "restrictions": {
-                    "min_length": account_api.EMAIL_MIN_LENGTH,
-                    "max_length": account_api.EMAIL_MAX_LENGTH
+                    "min_length": EMAIL_MIN_LENGTH,
+                    "max_length": EMAIL_MAX_LENGTH
                 },
                 "errorMessages": {},
             }
@@ -776,8 +801,10 @@ class PasswordResetViewTest(ApiTestCase):
 
 @ddt.ddt
 @skipUnless(settings.ROOT_URLCONF == 'lms.urls', 'Test only valid in lms')
-class RegistrationViewTest(ApiTestCase):
+class RegistrationViewTest(ThirdPartyAuthTestMixin, ApiTestCase):
     """Tests for the registration end-points of the User API. """
+
+    maxDiff = None
 
     USERNAME = "bob"
     EMAIL = "bob@example.com"
@@ -824,8 +851,8 @@ class RegistrationViewTest(ApiTestCase):
                 u"label": u"Email",
                 u"placeholder": u"username@domain.com",
                 u"restrictions": {
-                    "min_length": account_api.EMAIL_MIN_LENGTH,
-                    "max_length": account_api.EMAIL_MAX_LENGTH
+                    "min_length": EMAIL_MIN_LENGTH,
+                    "max_length": EMAIL_MAX_LENGTH
                 },
             }
         )
@@ -837,9 +864,10 @@ class RegistrationViewTest(ApiTestCase):
                 u"type": u"text",
                 u"required": True,
                 u"label": u"Full name",
-                u"instructions": u"The name that will appear on your certificates",
+                u"placeholder": u"Jane Doe",
+                u"instructions": u"Needed for any certificates you may earn",
                 u"restrictions": {
-                    "max_length": profile_api.FULL_NAME_MAX_LENGTH,
+                    "max_length": 255
                 },
             }
         )
@@ -851,10 +879,11 @@ class RegistrationViewTest(ApiTestCase):
                 u"type": u"text",
                 u"required": True,
                 u"label": u"Public username",
-                u"instructions": u"The name that will identify you in your courses",
+                u"placeholder": u"JaneDoe",
+                u"instructions": u"The name that will identify you in your courses - <strong>(cannot be changed later)</strong>",
                 u"restrictions": {
-                    "min_length": account_api.USERNAME_MIN_LENGTH,
-                    "max_length": account_api.USERNAME_MAX_LENGTH
+                    "min_length": USERNAME_MIN_LENGTH,
+                    "max_length": USERNAME_MAX_LENGTH
                 },
             }
         )
@@ -862,13 +891,16 @@ class RegistrationViewTest(ApiTestCase):
         self._assert_reg_field(
             no_extra_fields_setting,
             {
+                u"placeholder": "",
                 u"name": u"password",
                 u"type": u"password",
                 u"required": True,
                 u"label": u"Password",
                 u"restrictions": {
-                    "min_length": account_api.PASSWORD_MIN_LENGTH,
-                    "max_length": account_api.PASSWORD_MAX_LENGTH
+                    'min_length': PASSWORD_MIN_LENGTH,
+                    'max_length': PASSWORD_MAX_LENGTH
+                    # 'min_length': account_api.PASSWORD_MIN_LENGTH,
+                    # 'max_length': account_api.PASSWORD_MAX_LENGTH
                 },
             }
         )
@@ -876,6 +908,7 @@ class RegistrationViewTest(ApiTestCase):
     def test_register_form_third_party_auth_running(self):
         no_extra_fields_setting = {}
 
+        self.configure_google_provider(enabled=True)
         with simulate_running_pipeline(
             "openedx.core.djangoapps.user_api.views.third_party_auth.pipeline",
             "google-oauth2", email="bob@example.com",
@@ -902,8 +935,8 @@ class RegistrationViewTest(ApiTestCase):
                     u"label": u"Email",
                     u"placeholder": u"username@domain.com",
                     u"restrictions": {
-                        "min_length": account_api.EMAIL_MIN_LENGTH,
-                        "max_length": account_api.EMAIL_MAX_LENGTH
+                        "min_length": EMAIL_MIN_LENGTH,
+                        "max_length": EMAIL_MAX_LENGTH
                     },
                 }
             )
@@ -917,9 +950,10 @@ class RegistrationViewTest(ApiTestCase):
                     u"type": u"text",
                     u"required": True,
                     u"label": u"Full name",
-                    u"instructions": u"The name that will appear on your certificates",
+                    u"placeholder": u"Jane Doe",
+                    u"instructions": u"Needed for any certificates you may earn",
                     u"restrictions": {
-                        "max_length": profile_api.FULL_NAME_MAX_LENGTH
+                        "max_length": NAME_MAX_LENGTH,
                     }
                 }
             )
@@ -933,11 +967,11 @@ class RegistrationViewTest(ApiTestCase):
                     u"type": u"text",
                     u"required": True,
                     u"label": u"Public username",
-                    u"placeholder": u"",
-                    u"instructions": u"The name that will identify you in your courses",
+                    u"placeholder": u"JaneDoe",
+                    u"instructions": u"The name that will identify you in your courses - <strong>(cannot be changed later)</strong>",
                     u"restrictions": {
-                        "min_length": account_api.USERNAME_MIN_LENGTH,
-                        "max_length": account_api.USERNAME_MAX_LENGTH
+                        "min_length": USERNAME_MIN_LENGTH,
+                        "max_length": USERNAME_MAX_LENGTH
                     }
                 }
             )
@@ -955,7 +989,7 @@ class RegistrationViewTest(ApiTestCase):
                     {"value": "p", "name": "Doctorate"},
                     {"value": "m", "name": "Master's or professional degree"},
                     {"value": "b", "name": "Bachelor's degree"},
-                    {"value": "a", "name": "Associate's degree"},
+                    {"value": "a", "name": "Associate degree"},
                     {"value": "hs", "name": "Secondary/high school"},
                     {"value": "jhs", "name": "Junior secondary/junior high/middle school"},
                     {"value": "el", "name": "Elementary/primary school"},
@@ -983,7 +1017,7 @@ class RegistrationViewTest(ApiTestCase):
         )
 
     def test_register_form_year_of_birth(self):
-        this_year = datetime.datetime.now(UTC).year  # pylint: disable=maybe-no-member
+        this_year = datetime.datetime.now(UTC).year
         year_options = (
             [{"value": "", "name": "--", "default": True}] + [
                 {"value": unicode(year), "name": unicode(year)}
@@ -1232,20 +1266,18 @@ class RegistrationViewTest(ApiTestCase):
             "honor_code": "true",
         })
         self.assertHttpOK(response)
+        self.assertIn(settings.EDXMKTG_LOGGED_IN_COOKIE_NAME, self.client.cookies)
+        self.assertIn(settings.EDXMKTG_USER_INFO_COOKIE_NAME, self.client.cookies)
 
-        # Verify that the user exists
-        self.assertEqual(
-            account_api.account_info(self.USERNAME),
-            {
-                "username": self.USERNAME,
-                "email": self.EMAIL,
-                "is_active": False
-            }
-        )
+        user = User.objects.get(username=self.USERNAME)
+        request = RequestFactory().get('/url')
+        request.user = user
+        account_settings = get_account_settings(request)
 
-        # Verify that the user's full name is set
-        profile_info = profile_api.profile_info(self.USERNAME)
-        self.assertEqual(profile_info["full_name"], self.NAME)
+        self.assertEqual(self.USERNAME, account_settings["username"])
+        self.assertEqual(self.EMAIL, account_settings["email"])
+        self.assertFalse(account_settings["is_active"])
+        self.assertEqual(self.NAME, account_settings["name"])
 
         # Verify that we've been logged in
         # by trying to access a page that requires authentication
@@ -1258,7 +1290,6 @@ class RegistrationViewTest(ApiTestCase):
         "year_of_birth": "optional",
         "mailing_address": "optional",
         "goals": "optional",
-        "city": "optional",
         "country": "required",
     })
     def test_register_with_profile_info(self):
@@ -1272,20 +1303,22 @@ class RegistrationViewTest(ApiTestCase):
             "mailing_address": self.ADDRESS,
             "year_of_birth": self.YEAR_OF_BIRTH,
             "goals": self.GOALS,
-            "city": self.CITY,
             "country": self.COUNTRY,
             "honor_code": "true",
         })
         self.assertHttpOK(response)
 
-        # Verify the profile information
-        profile_info = profile_api.profile_info(self.USERNAME)
-        self.assertEqual(profile_info["level_of_education"], self.EDUCATION)
-        self.assertEqual(profile_info["mailing_address"], self.ADDRESS)
-        self.assertEqual(profile_info["year_of_birth"], int(self.YEAR_OF_BIRTH))
-        self.assertEqual(profile_info["goals"], self.GOALS)
-        self.assertEqual(profile_info["city"], self.CITY)
-        self.assertEqual(profile_info["country"], self.COUNTRY)
+        # Verify the user's account
+        user = User.objects.get(username=self.USERNAME)
+        request = RequestFactory().get('/url')
+        request.user = user
+        account_settings = get_account_settings(request)
+
+        self.assertEqual(account_settings["level_of_education"], self.EDUCATION)
+        self.assertEqual(account_settings["mailing_address"], self.ADDRESS)
+        self.assertEqual(account_settings["year_of_birth"], int(self.YEAR_OF_BIRTH))
+        self.assertEqual(account_settings["goals"], self.GOALS)
+        self.assertEqual(account_settings["country"], self.COUNTRY)
 
     def test_activation_email(self):
         # Register, which should trigger an activation email
@@ -1303,7 +1336,10 @@ class RegistrationViewTest(ApiTestCase):
         sent_email = mail.outbox[0]
         self.assertEqual(sent_email.to, [self.EMAIL])
         self.assertEqual(sent_email.subject, "Activate Your edX Account")
-        self.assertIn("activate your account", sent_email.body)
+        self.assertIn(
+            u"activating your {platform} account".format(platform=settings.PLATFORM_NAME),
+            sent_email.body
+        )
 
     @ddt.data(
         {"email": ""},
@@ -1366,11 +1402,19 @@ class RegistrationViewTest(ApiTestCase):
             "honor_code": "true",
         })
         self.assertEqual(response.status_code, 409)
+        response_json = json.loads(response.content)
         self.assertEqual(
-            response.content,
-            "It looks like {} belongs to an existing account. Try again with a different email address.".format(
-                self.EMAIL
-            )
+            response_json,
+            {
+                "email": [{
+                    "user_message": (
+                        "It looks like {} belongs to an existing account. "
+                        "Try again with a different email address."
+                    ).format(
+                        self.EMAIL
+                    )
+                }]
+            }
         )
 
     def test_register_duplicate_username(self):
@@ -1393,11 +1437,19 @@ class RegistrationViewTest(ApiTestCase):
             "honor_code": "true",
         })
         self.assertEqual(response.status_code, 409)
+        response_json = json.loads(response.content)
         self.assertEqual(
-            response.content,
-            "It looks like {} belongs to an existing account. Try again with a different username.".format(
-                self.USERNAME
-            )
+            response_json,
+            {
+                "username": [{
+                    "user_message": (
+                        "It looks like {} belongs to an existing account. "
+                        "Try again with a different username."
+                    ).format(
+                        self.USERNAME
+                    )
+                }]
+            }
         )
 
     def test_register_duplicate_username_and_email(self):
@@ -1420,11 +1472,46 @@ class RegistrationViewTest(ApiTestCase):
             "honor_code": "true",
         })
         self.assertEqual(response.status_code, 409)
+        response_json = json.loads(response.content)
         self.assertEqual(
-            response.content,
-            "It looks like {} and {} belong to an existing account. Try again with a different email address and username.".format(
-                self.EMAIL, self.USERNAME
-            )
+            response_json,
+            {
+                "username": [{
+                    "user_message": (
+                        "It looks like {} belongs to an existing account. "
+                        "Try again with a different username."
+                    ).format(
+                        self.USERNAME
+                    )
+                }],
+                "email": [{
+                    "user_message": (
+                        "It looks like {} belongs to an existing account. "
+                        "Try again with a different email address."
+                    ).format(
+                        self.EMAIL
+                    )
+                }]
+            }
+        )
+
+    def test_missing_fields(self):
+        response = self.client.post(
+            self.url,
+            {
+                "email": self.EMAIL,
+                "name": self.NAME,
+                "honor_code": "true",
+            }
+        )
+        self.assertEqual(response.status_code, 400)
+        response_json = json.loads(response.content)
+        self.assertEqual(
+            response_json,
+            {
+                "username": [{"user_message": "Username must be minimum of two characters long"}],
+                "password": [{"user_message": "A valid password is required"}],
+            }
         )
 
     def _assert_reg_field(self, extra_fields_setting, expected_field):
@@ -1461,24 +1548,190 @@ class RegistrationViewTest(ApiTestCase):
 
         # Verify that the form description matches what we'd expect
         form_desc = json.loads(response.content)
-        self.assertIn(expected_field, form_desc["fields"])
+
+        # Search the form for this field
+        actual_field = None
+        for field in form_desc["fields"]:
+            if field["name"] == expected_field["name"]:
+                actual_field = field
+                break
+
+        self.assertIsNot(
+            actual_field, None,
+            msg="Could not find field {name}".format(name=expected_field["name"])
+        )
+
+        for key, value in expected_field.iteritems():
+            self.assertEqual(
+                expected_field[key], actual_field[key],
+                msg=u"Expected {expected} for {key} but got {actual} instead".format(
+                    key=key,
+                    expected=expected_field[key],
+                    actual=actual_field[key]
+                )
+            )
+
+
+@httpretty.activate
+@ddt.ddt
+class ThirdPartyRegistrationTestMixin(ThirdPartyOAuthTestMixin):
+    """
+    Tests for the User API registration endpoint with 3rd party authentication.
+    """
+    def setUp(self):
+        super(ThirdPartyRegistrationTestMixin, self).setUp(create_user=False)
+        self.url = reverse('user_api_registration')
+
+    def data(self, user=None):
+        """Returns the request data for the endpoint."""
+        return {
+            "provider": self.BACKEND,
+            "access_token": self.access_token,
+            "client_id": self.client_id,
+            "honor_code": "true",
+            "country": "US",
+            "username": user.username if user else "test_username",
+            "name": user.first_name if user else "test name",
+            "email": user.email if user else "test@test.com",
+        }
+
+    def _assert_existing_user_error(self, response):
+        """Assert that the given response was an error with the given status_code and error code."""
+        self.assertEqual(response.status_code, 409)
+        errors = json.loads(response.content)
+        for conflict_attribute in ["username", "email"]:
+            self.assertIn(conflict_attribute, errors)
+            self.assertIn("belongs to an existing account", errors[conflict_attribute][0]["user_message"])
+        self.assertNotIn("partial_pipeline", self.client.session)
+
+    def _assert_access_token_error(self, response, expected_error_message):
+        """Assert that the given response was an error for the access_token field with the given error message."""
+        self.assertEqual(response.status_code, 400)
+        response_json = json.loads(response.content)
+        self.assertEqual(
+            response_json,
+            {"access_token": [{"user_message": expected_error_message}]}
+        )
+        self.assertNotIn("partial_pipeline", self.client.session)
+
+    def _verify_user_existence(self, user_exists, social_link_exists, user_is_active=None, username=None):
+        """Verifies whether the user object exists."""
+        users = User.objects.filter(username=(username if username else "test_username"))
+        self.assertEquals(users.exists(), user_exists)
+        if user_exists:
+            self.assertEquals(users[0].is_active, user_is_active)
+            self.assertEqual(
+                UserSocialAuth.objects.filter(user=users[0], provider=self.BACKEND).exists(),
+                social_link_exists
+            )
+        else:
+            self.assertEquals(UserSocialAuth.objects.count(), 0)
+
+    def test_success(self):
+        self._verify_user_existence(user_exists=False, social_link_exists=False)
+
+        self._setup_provider_response(success=True)
+        response = self.client.post(self.url, self.data())
+        self.assertEqual(response.status_code, 200)
+
+        self._verify_user_existence(user_exists=True, social_link_exists=True, user_is_active=False)
+
+    def test_unlinked_active_user(self):
+        user = UserFactory()
+        response = self.client.post(self.url, self.data(user))
+        self._assert_existing_user_error(response)
+        self._verify_user_existence(
+            user_exists=True, social_link_exists=False, user_is_active=True, username=user.username
+        )
+
+    def test_unlinked_inactive_user(self):
+        user = UserFactory(is_active=False)
+        response = self.client.post(self.url, self.data(user))
+        self._assert_existing_user_error(response)
+        self._verify_user_existence(
+            user_exists=True, social_link_exists=False, user_is_active=False, username=user.username
+        )
+
+    def test_user_already_registered(self):
+        self._setup_provider_response(success=True)
+        user = UserFactory()
+        UserSocialAuth.objects.create(user=user, provider=self.BACKEND, uid=self.social_uid)
+        response = self.client.post(self.url, self.data(user))
+        self._assert_existing_user_error(response)
+        self._verify_user_existence(
+            user_exists=True, social_link_exists=True, user_is_active=True, username=user.username
+        )
+
+    def test_social_user_conflict(self):
+        self._setup_provider_response(success=True)
+        user = UserFactory()
+        UserSocialAuth.objects.create(user=user, provider=self.BACKEND, uid=self.social_uid)
+        response = self.client.post(self.url, self.data())
+        self._assert_access_token_error(response, "The provided access_token is already associated with another user.")
+        self._verify_user_existence(
+            user_exists=True, social_link_exists=True, user_is_active=True, username=user.username
+        )
+
+    def test_invalid_token(self):
+        self._setup_provider_response(success=False)
+        response = self.client.post(self.url, self.data())
+        self._assert_access_token_error(response, "The provided access_token is not valid.")
+        self._verify_user_existence(user_exists=False, social_link_exists=False)
+
+    def test_missing_token(self):
+        data = self.data()
+        data.pop("access_token")
+        response = self.client.post(self.url, data)
+        self._assert_access_token_error(
+            response,
+            "An access_token is required when passing value ({}) for provider.".format(self.BACKEND)
+        )
+        self._verify_user_existence(user_exists=False, social_link_exists=False)
+
+
+@skipUnless(settings.FEATURES.get("ENABLE_THIRD_PARTY_AUTH"), "third party auth not enabled")
+class TestFacebookRegistrationView(
+    ThirdPartyRegistrationTestMixin, ThirdPartyOAuthTestMixinFacebook, TransactionTestCase
+):
+    """Tests the User API registration endpoint with Facebook authentication."""
+    def test_social_auth_exception(self):
+        """
+        According to the do_auth method in social.backends.facebook.py,
+        the Facebook API sometimes responds back a JSON with just False as value.
+        """
+        self._setup_provider_response_with_body(200, json.dumps("false"))
+        response = self.client.post(self.url, self.data())
+        self._assert_access_token_error(response, "The provided access_token is not valid.")
+        self._verify_user_existence(user_exists=False, social_link_exists=False)
+
+
+@skipUnless(settings.FEATURES.get("ENABLE_THIRD_PARTY_AUTH"), "third party auth not enabled")
+class TestGoogleRegistrationView(
+    ThirdPartyRegistrationTestMixin, ThirdPartyOAuthTestMixinGoogle, TransactionTestCase
+):
+    """Tests the User API registration endpoint with Google authentication."""
+    pass
 
 
 @ddt.ddt
-class UpdateEmailOptInTestCase(ApiTestCase):
+class UpdateEmailOptInTestCase(ApiTestCase, SharedModuleStoreTestCase):
     """Tests the UpdateEmailOptInPreference view. """
 
     USERNAME = "steve"
     EMAIL = "steve@isawesome.com"
     PASSWORD = "steveopolis"
 
+    @classmethod
+    def setUpClass(cls):
+        super(UpdateEmailOptInTestCase, cls).setUpClass()
+        cls.course = CourseFactory.create()
+        cls.url = reverse("preferences_email_opt_in")
+
     def setUp(self):
         """ Create a course and user, then log in. """
         super(UpdateEmailOptInTestCase, self).setUp()
-        self.course = CourseFactory.create()
         self.user = UserFactory.create(username=self.USERNAME, email=self.EMAIL, password=self.PASSWORD)
         self.client.login(username=self.USERNAME, password=self.PASSWORD)
-        self.url = reverse("preferences_email_opt_in")
 
     @ddt.data(
         (u"True", u"True"),
@@ -1546,4 +1799,3 @@ class UpdateEmailOptInTestCase(ApiTestCase):
         self.assertHttpBadRequest(response)
         with self.assertRaises(UserOrgTag.DoesNotExist):
             UserOrgTag.objects.get(user=self.user, org=self.course.id.org, key="email-optin")
-

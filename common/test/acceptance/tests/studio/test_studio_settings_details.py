@@ -3,7 +3,7 @@ Acceptance tests for Studio's Settings Details pages
 """
 from unittest import skip
 
-from acceptance.tests.studio.base_studio_test import StudioCourseTest
+from .base_studio_test import StudioCourseTest
 from ...fixtures.course import CourseFixture
 from ...pages.studio.settings import SettingsPage
 from ...pages.studio.overview import CourseOutlinePage
@@ -67,6 +67,7 @@ class SettingsMilestonesTest(StudioCourseTest):
         # Refresh the page to load the new course fixture and populate the prrequisite course dropdown
         # Then select the prerequisite course and save the changes
         self.settings_detail.refresh_page()
+        self.settings_detail.wait_for_prerequisite_course_options()
         select_option_by_value(
             browser_query=self.settings_detail.pre_requisite_course_options,
             value=pre_requisite_course_id
@@ -77,8 +78,9 @@ class SettingsMilestonesTest(StudioCourseTest):
             self.settings_detail.alert_confirmation_title.text
         )
 
-        # Refresh the page again to confirm the prerequisite course selection is properly reflected
+        # Refresh the page again and confirm the prerequisite course selection is properly reflected
         self.settings_detail.refresh_page()
+        self.settings_detail.wait_for_prerequisite_course_options()
         self.assertTrue(is_option_value_selected(
             browser_query=self.settings_detail.pre_requisite_course_options,
             value=pre_requisite_course_id
@@ -97,6 +99,7 @@ class SettingsMilestonesTest(StudioCourseTest):
 
         # Refresh the page again to confirm the None selection is properly reflected
         self.settings_detail.refresh_page()
+        self.settings_detail.wait_for_prerequisite_course_options()
         self.assertTrue(is_option_value_selected(
             browser_query=self.settings_detail.pre_requisite_course_options,
             value=''
@@ -115,7 +118,7 @@ class SettingsMilestonesTest(StudioCourseTest):
 
         # Refresh the page again to confirm the prerequisite course selection is properly reflected
         self.settings_detail.refresh_page()
-
+        self.settings_detail.wait_for_prerequisite_course_options()
         dropdown_status = is_option_value_selected(
             browser_query=self.settings_detail.pre_requisite_course_options,
             value=pre_requisite_course_id
@@ -160,4 +163,33 @@ class SettingsMilestonesTest(StudioCourseTest):
             page=course_outline_page,
             css_selector='span.section-title',
             text='Entrance Exam'
+        ))
+
+    def test_entrance_exam_has_unit_button(self):
+        """
+        Test that entrance exam should be created after checking the 'enable entrance exam' checkbox.
+        And user has option to add units only instead of any Subsection.
+        """
+        self.settings_detail.require_entrance_exam(required=True)
+        self.settings_detail.save_changes()
+
+        # getting the course outline page.
+        course_outline_page = CourseOutlinePage(
+            self.browser, self.course_info['org'], self.course_info['number'], self.course_info['run']
+        )
+        course_outline_page.visit()
+        course_outline_page.wait_for_ajax()
+
+        # button with text 'New Unit' should be present.
+        self.assertTrue(element_has_text(
+            page=course_outline_page,
+            css_selector='.add-item a.button-new',
+            text='New Unit'
+        ))
+
+        # button with text 'New Subsection' should not be present.
+        self.assertFalse(element_has_text(
+            page=course_outline_page,
+            css_selector='.add-item a.button-new',
+            text='New Subsection'
         ))

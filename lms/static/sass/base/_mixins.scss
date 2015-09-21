@@ -37,6 +37,12 @@
   display: block;
 }
 
+@mixin show-hover-state() {
+    opacity: 1;
+    background-color: $shadow-d2;
+    border-radius: ($baseline/4);
+}
+
 @function em($pxval, $base: 16) {
   @return #{$pxval / $base}em;
 }
@@ -127,6 +133,12 @@
   padding: 0;
   position: absolute;
   width: 1px;
+}
+
+// extends - ensures proper contrast for automated checkers
+%a11y-ensure-contrast {
+  background: $white;
+  color: $black;
 }
 
 // extends - UI - removes list styling/spacing when using uls, ols for navigation and less content-centric cases

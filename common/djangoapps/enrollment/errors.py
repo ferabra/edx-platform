@@ -30,7 +30,11 @@ class CourseEnrollmentFullError(CourseEnrollmentError):
 
 
 class CourseEnrollmentExistsError(CourseEnrollmentError):
-    pass
+    enrollment = None
+
+    def __init__(self, message, enrollment):
+        super(CourseEnrollmentExistsError, self).__init__(message)
+        self.enrollment = enrollment
 
 
 class CourseModeNotFoundError(CourseEnrollmentError):
@@ -45,4 +49,9 @@ class EnrollmentNotFoundError(CourseEnrollmentError):
 
 class EnrollmentApiLoadError(CourseEnrollmentError):
     """The data API could not be loaded."""
+    pass
+
+
+class InvalidEnrollmentAttribute(CourseEnrollmentError):
+    """Enrollment Attributes could not be validated"""
     pass

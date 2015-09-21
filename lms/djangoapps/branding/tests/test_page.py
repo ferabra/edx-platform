@@ -1,18 +1,21 @@
 """
 Tests for branding page
 """
+
 import datetime
+
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.http import HttpResponseRedirect
 from django.test.utils import override_settings
 from django.test.client import RequestFactory
+
 from pytz import UTC
 from mock import patch, Mock
+from nose.plugins.attrib import attr
 from edxmako.shortcuts import render_to_response
 
 from branding.views import index
-from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE
 from edxmako.tests import mako_middleware_process_request
 import student.views
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
@@ -41,7 +44,7 @@ def mock_render_to_response(*args, **kwargs):
 RENDER_MOCK = Mock(side_effect=mock_render_to_response)
 
 
-@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
+@attr('shard_1')
 class AnonymousIndexPageTest(ModuleStoreTestCase):
     """
     Tests that anonymous users can access the '/' page,  Need courses with start date
@@ -115,7 +118,7 @@ class AnonymousIndexPageTest(ModuleStoreTestCase):
         self.assertEqual(response._headers.get("location")[1], "/login")  # pylint: disable=protected-access
 
 
-@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
+@attr('shard_1')
 class PreRequisiteCourseCatalog(ModuleStoreTestCase, LoginEnrollmentTestCase):
     """
     Test to simulate and verify fix for disappearing courses in
@@ -123,6 +126,8 @@ class PreRequisiteCourseCatalog(ModuleStoreTestCase, LoginEnrollmentTestCase):
     """
     @patch.dict(settings.FEATURES, {'ENABLE_PREREQUISITE_COURSES': True, 'MILESTONES_APP': True})
     def setUp(self):
+        super(PreRequisiteCourseCatalog, self).setUp()
+
         seed_milestone_relationship_types()
 
     @patch.dict(settings.FEATURES, {'ENABLE_PREREQUISITE_COURSES': True, 'MILESTONES_APP': True})
@@ -161,7 +166,7 @@ class PreRequisiteCourseCatalog(ModuleStoreTestCase, LoginEnrollmentTestCase):
         self.assertIn('course that has pre requisite', resp.content)
 
 
-@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
+@attr('shard_1')
 class IndexPageCourseCardsSortingTests(ModuleStoreTestCase):
     """
     Test for Index page course cards sorting
@@ -195,15 +200,62 @@ class IndexPageCourseCardsSortingTests(ModuleStoreTestCase):
 
     @patch('student.views.render_to_response', RENDER_MOCK)
     @patch('courseware.views.render_to_response', RENDER_MOCK)
+    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_COURSE_DISCOVERY': False})
+    def test_course_discovery_off(self):
+        """
+        Asserts that the Course Discovery UI elements follow the
+        feature flag settings
+        """
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        # assert that the course discovery UI is not present
+        self.assertNotIn('Search for a course', response.content)
+
+        # check the /courses view
+        response = self.client.get(reverse('branding.views.courses'))
+        self.assertEqual(response.status_code, 200)
+
+        # assert that the course discovery UI is not present
+        self.assertNotIn('Search for a course', response.content)
+        self.assertNotIn('<aside aria-label="Refine Your Search" class="search-facets phone-menu">', response.content)
+
+        # make sure we have the special css class on the section
+        self.assertIn('<div class="courses no-course-discovery"', response.content)
+
+    @patch('student.views.render_to_response', RENDER_MOCK)
+    @patch('courseware.views.render_to_response', RENDER_MOCK)
+    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_COURSE_DISCOVERY': True})
+    def test_course_discovery_on(self):
+        """
+        Asserts that the Course Discovery UI elements follow the
+        feature flag settings
+        """
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        # assert that the course discovery UI is not present
+        self.assertIn('Search for a course', response.content)
+
+        # check the /courses view
+        response = self.client.get(reverse('branding.views.courses'))
+        self.assertEqual(response.status_code, 200)
+
+        # assert that the course discovery UI is present
+        self.assertIn('Search for a course', response.content)
+        self.assertIn('<aside aria-label="Refine Your Search" class="search-facets phone-menu">', response.content)
+        self.assertIn('<div class="courses"', response.content)
+
+    @patch('student.views.render_to_response', RENDER_MOCK)
+    @patch('courseware.views.render_to_response', RENDER_MOCK)
+    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_COURSE_DISCOVERY': False})
     def test_course_cards_sorted_by_default_sorting(self):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
         ((template, context), _) = RENDER_MOCK.call_args  # pylint: disable=unpacking-non-sequence
         self.assertEqual(template, 'index.html')
 
-        # Now the courses will be stored in their announcement dates.
-        self.assertEqual(context['courses'][0].id, self.starting_later.id)
-        self.assertEqual(context['courses'][1].id, self.starting_earlier.id)
+        # by default the courses will be sorted by their creation dates, earliest first.
+        self.assertEqual(context['courses'][0].id, self.starting_earlier.id)
+        self.assertEqual(context['courses'][1].id, self.starting_later.id)
         self.assertEqual(context['courses'][2].id, self.course_with_default_start_date.id)
 
         # check the /courses view
@@ -212,23 +264,24 @@ class IndexPageCourseCardsSortingTests(ModuleStoreTestCase):
         ((template, context), _) = RENDER_MOCK.call_args  # pylint: disable=unpacking-non-sequence
         self.assertEqual(template, 'courseware/courses.html')
 
-        # Now the courses will be stored in their announcement dates.
-        self.assertEqual(context['courses'][0].id, self.starting_later.id)
-        self.assertEqual(context['courses'][1].id, self.starting_earlier.id)
+        # by default the courses will be sorted by their creation dates, earliest first.
+        self.assertEqual(context['courses'][0].id, self.starting_earlier.id)
+        self.assertEqual(context['courses'][1].id, self.starting_later.id)
         self.assertEqual(context['courses'][2].id, self.course_with_default_start_date.id)
 
     @patch('student.views.render_to_response', RENDER_MOCK)
     @patch('courseware.views.render_to_response', RENDER_MOCK)
-    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_COURSE_SORTING_BY_START_DATE': True})
-    def test_course_cards_sorted_by_start_date_show_earliest_first(self):
+    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_COURSE_SORTING_BY_START_DATE': False})
+    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_COURSE_DISCOVERY': False})
+    def test_course_cards_sorted_by_start_date_disabled(self):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
         ((template, context), _) = RENDER_MOCK.call_args  # pylint: disable=unpacking-non-sequence
         self.assertEqual(template, 'index.html')
 
-        # now the courses will be sorted by their creation dates, earliest first.
-        self.assertEqual(context['courses'][0].id, self.starting_earlier.id)
-        self.assertEqual(context['courses'][1].id, self.starting_later.id)
+        # now the courses will be sorted by their announcement dates.
+        self.assertEqual(context['courses'][0].id, self.starting_later.id)
+        self.assertEqual(context['courses'][1].id, self.starting_earlier.id)
         self.assertEqual(context['courses'][2].id, self.course_with_default_start_date.id)
 
         # check the /courses view as well
@@ -237,7 +290,7 @@ class IndexPageCourseCardsSortingTests(ModuleStoreTestCase):
         ((template, context), _) = RENDER_MOCK.call_args  # pylint: disable=unpacking-non-sequence
         self.assertEqual(template, 'courseware/courses.html')
 
-        # now the courses will be sorted by their creation dates, earliest first.
-        self.assertEqual(context['courses'][0].id, self.starting_earlier.id)
-        self.assertEqual(context['courses'][1].id, self.starting_later.id)
+        # now the courses will be sorted by their announcement dates.
+        self.assertEqual(context['courses'][0].id, self.starting_later.id)
+        self.assertEqual(context['courses'][1].id, self.starting_earlier.id)
         self.assertEqual(context['courses'][2].id, self.course_with_default_start_date.id)

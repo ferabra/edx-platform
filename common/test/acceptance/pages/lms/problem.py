@@ -28,6 +28,36 @@ class ProblemPage(PageObject):
         """
         return self.q(css="div.problem p").text
 
+    @property
+    def message_text(self):
+        """
+        Return the "message" text of the question of the problem.
+        """
+        return self.q(css="div.problem span.message").text[0]
+
+    @property
+    def hint_text(self):
+        """
+        Return the "hint" text of the problem from its div.
+        """
+        return self.q(css="div.problem div.problem-hint").text[0]
+
+    @property
+    def mathjax_rendered_in_problem(self):
+        """
+        Check that MathJax have been rendered in problem hint
+        """
+        mathjax_container = self.q(css="div.problem p .MathJax .math")
+        return mathjax_container.visible and mathjax_container.present
+
+    @property
+    def mathjax_rendered_in_hint(self):
+        """
+        Check that MathJax have been rendered in problem hint
+        """
+        mathjax_container = self.q(css="div.problem div.problem-hint .MathJax .math")
+        return mathjax_container.visible and mathjax_container.present
+
     def fill_answer(self, text):
         """
         Fill in the answer to the problem.
@@ -38,11 +68,34 @@ class ProblemPage(PageObject):
         """
         Click the Check button!
         """
-        self.q(css='div.problem input.check').click()
+        self.q(css='div.problem button.check').click()
+        self.wait_for_ajax()
+
+    def click_hint(self):
+        """
+        Click the Hint button.
+        """
+        self.q(css='div.problem button.hint-button').click()
         self.wait_for_ajax()
 
     def is_correct(self):
         """
         Is there a "correct" status showing?
         """
-        return self.q(css="div.problem div.capa_inputtype.textline div.correct p.status").is_present()
+        return self.q(css="div.problem div.capa_inputtype.textline div.correct span.status").is_present()
+
+    def click_clarification(self, index=0):
+        """
+        Click on an inline icon that can be included in problem text using an HTML <clarification> element:
+
+        Problem <clarification>clarification text hidden by an icon in rendering</clarification> Text
+        """
+        self.q(css='div.problem .clarification:nth-child({index}) i[data-tooltip]'.format(index=index + 1)).click()
+
+    @property
+    def visible_tooltip_text(self):
+        """
+        Get the text seen in any tooltip currently visible on the page.
+        """
+        self.wait_for_element_visibility('body > .tooltip', 'A tooltip is visible.')
+        return self.q(css='body > .tooltip').text[0]

@@ -4,9 +4,9 @@ Tests related to the Microsites feature
 from django.conf import settings
 from django.core.urlresolvers import reverse
 from django.test.utils import override_settings
+from nose.plugins.attrib import attr
 
 from courseware.tests.helpers import LoginEnrollmentTestCase
-from xmodule.modulestore.tests.django_utils import TEST_DATA_MOCK_MODULESTORE
 from course_modes.models import CourseMode
 from xmodule.course_module import (
     CATALOG_VISIBILITY_CATALOG_AND_ABOUT, CATALOG_VISIBILITY_NONE)
@@ -14,7 +14,7 @@ from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
 
 
-@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
+@attr('shard_1')
 class TestMicrosites(ModuleStoreTestCase, LoginEnrollmentTestCase):
     """
     This is testing of the Microsite feature
@@ -23,6 +23,8 @@ class TestMicrosites(ModuleStoreTestCase, LoginEnrollmentTestCase):
     STUDENT_INFO = [('view@test.com', 'foo'), ('view2@test.com', 'foo')]
 
     def setUp(self):
+        super(TestMicrosites, self).setUp()
+
         # use a different hostname to test Microsites since they are
         # triggered on subdomain mappings
         #
@@ -218,5 +220,7 @@ class TestMicrosites(ModuleStoreTestCase, LoginEnrollmentTestCase):
         resp = self.client.get(url, HTTP_HOST=settings.MICROSITE_TEST_HOSTNAME)
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn("Register for {}".format(self.course_with_visibility.id.course), resp.content)
-        self.assertIn("Add {} to Cart ($10)".format(self.course_with_visibility.id.course), resp.content)
+        self.assertIn("Add {} to Cart <span>($10 USD)</span>".format(
+            self.course_with_visibility.id.course
+        ), resp.content)
         self.assertIn('$("#add_to_cart_post").click', resp.content)

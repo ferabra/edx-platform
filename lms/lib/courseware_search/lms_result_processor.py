@@ -8,7 +8,6 @@ from django.core.urlresolvers import reverse
 from opaque_keys.edx.locations import SlashSeparatedCourseKey
 from search.result_processor import SearchResultProcessor
 from xmodule.modulestore.django import modulestore
-from xmodule.modulestore.search import path_to_location
 
 from courseware.access import has_access
 
@@ -17,6 +16,7 @@ class LmsSearchResultProcessor(SearchResultProcessor):
 
     """ SearchResultProcessor for LMS Search """
     _course_key = None
+    _course_name = None
     _usage_key = None
     _module_store = None
     _module_temp_dictionary = {}
@@ -58,43 +58,12 @@ class LmsSearchResultProcessor(SearchResultProcessor):
             kwargs={"course_id": self._results_fields["course"], "location": self._results_fields["id"]}
         )
 
-    @property
-    def location(self):
-        """
-        Blend "location" property into the resultset, so that the path to the found component can be shown within the UI
-        """
-        # TODO: update whern changes to "cohorted-courseware" branch are merged in
-        (course_key, chapter, section, position) = path_to_location(self.get_module_store(), self.get_usage_key())
-
-        def get_display_name(category, item_id):
-            """ helper to get display name from object """
-            item = self.get_item(course_key.make_usage_key(category, item_id))
-            return getattr(item, "display_name", None)
-
-        def get_position_name(section, position):
-            """ helper to fetch name corresponding to the position therein """
-            pos = int(position)
-            section_item = self.get_item(course_key.make_usage_key("sequential", section))
-            if section_item.has_children and len(section_item.children) >= pos:
-                item = self.get_item(section_item.children[pos - 1])
-                return getattr(item, "display_name", None)
-            return None
-
-        location_description = []
-        if chapter:
-            location_description.append(get_display_name("chapter", chapter))
-        if section:
-            location_description.append(get_display_name("sequential", section))
-        if position:
-            location_description.append(get_position_name(section, position))
-
-        return location_description
-
     def should_remove(self, user):
         """ Test to see if this result should be removed due to access restriction """
-        return not has_access(
+        user_has_access = has_access(
             user,
             "load",
             self.get_item(self.get_usage_key()),
             self.get_course_key()
         )
+        return not user_has_access

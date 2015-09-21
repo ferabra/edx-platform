@@ -99,7 +99,7 @@ class GlobalStaff(AccessRole):
 
     def add_users(self, *users):
         for user in users:
-            if (user.is_authenticated() and user.is_active):
+            if user.is_authenticated() and user.is_active:
                 user.is_staff = True
                 user.save()
 
@@ -267,6 +267,14 @@ class LibraryUserRole(CourseRole):
         super(LibraryUserRole, self).__init__(self.ROLE, *args, **kwargs)
 
 
+class CourseCcxCoachRole(CourseRole):
+    """A CCX Coach"""
+    ROLE = 'ccx_coach'
+
+    def __init__(self, *args, **kwargs):
+        super(CourseCcxCoachRole, self).__init__(self.ROLE, *args, **kwargs)
+
+
 class OrgStaffRole(OrgRole):
     """An organization staff member"""
     def __init__(self, *args, **kwargs):
@@ -300,6 +308,17 @@ class CourseCreatorRole(RoleBase):
 
     def __init__(self, *args, **kwargs):
         super(CourseCreatorRole, self).__init__(self.ROLE, *args, **kwargs)
+
+
+@register_access_role
+class SupportStaffRole(RoleBase):
+    """
+    Student support team members.
+    """
+    ROLE = "support"
+
+    def __init__(self, *args, **kwargs):
+        super(SupportStaffRole, self).__init__(self.ROLE, *args, **kwargs)
 
 
 class UserBasedRole(object):

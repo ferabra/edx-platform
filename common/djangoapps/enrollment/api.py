@@ -5,8 +5,8 @@ course level, such as available course modes.
 """
 from django.utils import importlib
 import logging
-from django.core.cache import cache
 from django.conf import settings
+from django.core.cache import cache
 from enrollment import errors
 
 log = logging.getLogger(__name__)
@@ -36,7 +36,10 @@ def get_enrollments(user_id):
                 "user": "Bob",
                 "course": {
                     "course_id": "edX/DemoX/2014T2",
-                    "enrollment_end": 2014-12-20T20:18:00Z,
+                    "enrollment_end": "2014-12-20T20:18:00Z",
+                    "enrollment_start": "2014-10-15T20:18:00Z",
+                    "course_start": "2015-02-03T00:00:00Z",
+                    "course_end": "2015-05-06T00:00:00Z",
                     "course_modes": [
                         {
                             "slug": "honor",
@@ -45,10 +48,10 @@ def get_enrollments(user_id):
                             "suggested_prices": "",
                             "currency": "usd",
                             "expiration_datetime": null,
-                            "description": null
+                            "description": null,
+                            "sku": null
                         }
                     ],
-                    "enrollment_start": 2014-10-15T20:18:00Z,
                     "invite_only": False
                 }
             },
@@ -59,7 +62,10 @@ def get_enrollments(user_id):
                 "user": "Bob",
                 "course": {
                     "course_id": "edX/edX-Insider/2014T2",
-                    "enrollment_end": 2014-12-20T20:18:00Z,
+                    "enrollment_end": "2014-12-20T20:18:00Z",
+                    "enrollment_start": "2014-10-15T20:18:00Z",
+                    "course_start": "2015-02-03T00:00:00Z",
+                    "course_end": "2015-05-06T00:00:00Z",
                     "course_modes": [
                         {
                             "slug": "honor",
@@ -68,10 +74,10 @@ def get_enrollments(user_id):
                             "suggested_prices": "",
                             "currency": "usd",
                             "expiration_datetime": null,
-                            "description": null
+                            "description": null,
+                            "sku": null
                         }
                     ],
-                    "enrollment_start": 2014-10-15T20:18:00Z,
                     "invite_only": True
                 }
             }
@@ -102,7 +108,10 @@ def get_enrollment(user_id, course_id):
             "user": "Bob",
             "course": {
                 "course_id": "edX/DemoX/2014T2",
-                "enrollment_end": 2014-12-20T20:18:00Z,
+                "enrollment_end": "2014-12-20T20:18:00Z",
+                "enrollment_start": "2014-10-15T20:18:00Z",
+                "course_start": "2015-02-03T00:00:00Z",
+                "course_end": "2015-05-06T00:00:00Z",
                 "course_modes": [
                     {
                         "slug": "honor",
@@ -111,10 +120,10 @@ def get_enrollment(user_id, course_id):
                         "suggested_prices": "",
                         "currency": "usd",
                         "expiration_datetime": null,
-                        "description": null
+                        "description": null,
+                        "sku": null
                     }
                 ],
-                "enrollment_start": 2014-10-15T20:18:00Z,
                 "invite_only": False
             }
         }
@@ -128,9 +137,11 @@ def add_enrollment(user_id, course_id, mode='honor', is_active=True):
 
     Enrolls a user in a course. If the mode is not specified, this will default to 'honor'.
 
-    Args:
+    Arguments:
         user_id (str): The user to enroll.
         course_id (str): The course to enroll the user in.
+
+    Keyword Arguments:
         mode (str): Optional argument for the type of enrollment to create. Ex. 'audit', 'honor', 'verified',
             'professional'. If not specified, this defaults to 'honor'.
         is_active (boolean): Optional argument for making the new enrollment inactive. If not specified, is_active
@@ -148,7 +159,10 @@ def add_enrollment(user_id, course_id, mode='honor', is_active=True):
             "user": "Bob",
             "course": {
                 "course_id": "edX/DemoX/2014T2",
-                "enrollment_end": 2014-12-20T20:18:00Z,
+                "enrollment_end": "2014-12-20T20:18:00Z",
+                "enrollment_start": "2014-10-15T20:18:00Z",
+                "course_start": "2015-02-03T00:00:00Z",
+                "course_end": "2015-05-06T00:00:00Z",
                 "course_modes": [
                     {
                         "slug": "honor",
@@ -157,28 +171,31 @@ def add_enrollment(user_id, course_id, mode='honor', is_active=True):
                         "suggested_prices": "",
                         "currency": "usd",
                         "expiration_datetime": null,
-                        "description": null
+                        "description": null,
+                        "sku": null
                     }
                 ],
-                "enrollment_start": 2014-10-15T20:18:00Z,
                 "invite_only": False
             }
         }
     """
-    _validate_course_mode(course_id, mode)
+    _validate_course_mode(course_id, mode, is_active=is_active)
     return _data_api().create_course_enrollment(user_id, course_id, mode, is_active)
 
 
-def update_enrollment(user_id, course_id, mode=None, is_active=None):
+def update_enrollment(user_id, course_id, mode=None, is_active=None, enrollment_attributes=None):
     """Updates the course mode for the enrolled user.
 
     Update a course enrollment for the given user and course.
 
-    Args:
+    Arguments:
         user_id (str): The user associated with the updated enrollment.
         course_id (str): The course associated with the updated enrollment.
+
+    Keyword Arguments:
         mode (str): The new course mode for this enrollment.
         is_active (bool): Sets whether the enrollment is active or not.
+        enrollment_attributes (list): Attributes to be set the enrollment.
 
     Returns:
         A serializable dictionary representing the updated enrollment.
@@ -192,7 +209,10 @@ def update_enrollment(user_id, course_id, mode=None, is_active=None):
             "user": "Bob",
             "course": {
                 "course_id": "edX/DemoX/2014T2",
-                "enrollment_end": 2014-12-20T20:18:00Z,
+                "enrollment_end": "2014-12-20T20:18:00Z",
+                "enrollment_start": "2014-10-15T20:18:00Z",
+                "course_start": "2015-02-03T00:00:00Z",
+                "course_end": "2015-05-06T00:00:00Z",
                 "course_modes": [
                     {
                         "slug": "honor",
@@ -201,31 +221,39 @@ def update_enrollment(user_id, course_id, mode=None, is_active=None):
                         "suggested_prices": "",
                         "currency": "usd",
                         "expiration_datetime": null,
-                        "description": null
+                        "description": null,
+                        "sku": null
                     }
                 ],
-                "enrollment_start": 2014-10-15T20:18:00Z,
                 "invite_only": False
             }
         }
 
     """
-    _validate_course_mode(course_id, mode)
+    if mode is not None:
+        _validate_course_mode(course_id, mode, is_active=is_active)
     enrollment = _data_api().update_course_enrollment(user_id, course_id, mode=mode, is_active=is_active)
     if enrollment is None:
         msg = u"Course Enrollment not found for user {user} in course {course}".format(user=user_id, course=course_id)
         log.warn(msg)
         raise errors.EnrollmentNotFoundError(msg)
+    else:
+        if enrollment_attributes is not None:
+            set_enrollment_attributes(user_id, course_id, enrollment_attributes)
+
     return enrollment
 
 
-def get_course_enrollment_details(course_id):
+def get_course_enrollment_details(course_id, include_expired=False):
     """Get the course modes for course. Also get enrollment start and end date, invite only, etc.
 
     Given a course_id, return a serializable dictionary of properties describing course enrollment information.
 
     Args:
         course_id (str): The Course to get enrollment information for.
+
+        include_expired (bool): Boolean denoting whether expired course modes
+        should be included in the returned JSON data.
 
     Returns:
         A serializable dictionary of course enrollment information.
@@ -234,7 +262,10 @@ def get_course_enrollment_details(course_id):
         >>> get_course_enrollment_details("edX/DemoX/2014T2")
         {
             "course_id": "edX/DemoX/2014T2",
-            "enrollment_end": 2014-12-20T20:18:00Z,
+            "enrollment_end": "2014-12-20T20:18:00Z",
+            "enrollment_start": "2014-10-15T20:18:00Z",
+            "course_start": "2015-02-03T00:00:00Z",
+            "course_end": "2015-05-06T00:00:00Z",
             "course_modes": [
                 {
                     "slug": "honor",
@@ -243,16 +274,18 @@ def get_course_enrollment_details(course_id):
                     "suggested_prices": "",
                     "currency": "usd",
                     "expiration_datetime": null,
-                    "description": null
+                    "description": null,
+                    "sku": null
                 }
             ],
-            "enrollment_start": 2014-10-15T20:18:00Z,
             "invite_only": False
         }
 
     """
-    cache_key = u"enrollment.course.details.{course_id}".format(course_id=course_id)
-
+    cache_key = u'enrollment.course.details.{course_id}.{include_expired}'.format(
+        course_id=course_id,
+        include_expired=include_expired
+    )
     cached_enrollment_data = None
     try:
         cached_enrollment_data = cache.get(cache_key)
@@ -264,7 +297,7 @@ def get_course_enrollment_details(course_id):
         log.info(u"Get enrollment data for course %s (cached)", course_id)
         return cached_enrollment_data
 
-    course_enrollment_details = _data_api().get_course_enrollment_info(course_id)
+    course_enrollment_details = _data_api().get_course_enrollment_info(course_id, include_expired)
 
     try:
         cache_time_out = getattr(settings, 'ENROLLMENT_COURSE_DETAILS_CACHE_TIMEOUT', 60)
@@ -278,7 +311,54 @@ def get_course_enrollment_details(course_id):
     return course_enrollment_details
 
 
-def _validate_course_mode(course_id, mode):
+def set_enrollment_attributes(user_id, course_id, attributes):
+    """Set enrollment attributes for the enrollment of given user in the
+    course provided.
+
+    Args:
+        course_id (str): The Course to set enrollment attributes for.
+        user_id (str): The User to set enrollment attributes for.
+        attributes (list): Attributes to be set.
+
+    Example:
+        >>>set_enrollment_attributes(
+            "Bob",
+            "course-v1-edX-DemoX-1T2015",
+            [
+                {
+                    "namespace": "credit",
+                    "name": "provider_id",
+                    "value": "hogwarts",
+                },
+            ]
+        )
+    """
+    _data_api().add_or_update_enrollment_attr(user_id, course_id, attributes)
+
+
+def get_enrollment_attributes(user_id, course_id):
+    """Retrieve enrollment attributes for given user for provided course.
+
+    Args:
+        user_id: The User to get enrollment attributes for
+        course_id (str): The Course to get enrollment attributes for.
+
+    Example:
+        >>>get_enrollment_attributes("Bob", "course-v1-edX-DemoX-1T2015")
+        [
+            {
+                "namespace": "credit",
+                "name": "provider_id",
+                "value": "hogwarts",
+            },
+        ]
+
+    Returns: list
+    """
+    return _data_api().get_enrollment_attributes(user_id, course_id)
+
+
+def _validate_course_mode(course_id, mode, is_active=None):
     """Checks to see if the specified course mode is valid for the course.
 
     If the requested course mode is not available for the course, raise an error with corresponding
@@ -288,9 +368,12 @@ def _validate_course_mode(course_id, mode):
     'honor', return true, allowing the enrollment to be 'honor' even if the mode is not explicitly
     set for the course.
 
-    Args:
+    Arguments:
         course_id (str): The course to check against for available course modes.
         mode (str): The slug for the course mode specified in the enrollment.
+
+    Keyword Arguments:
+        is_active (bool): Whether the enrollment is to be activated or deactivated.
 
     Returns:
         None
@@ -298,7 +381,11 @@ def _validate_course_mode(course_id, mode):
     Raises:
         CourseModeNotFound: raised if the course mode is not found.
     """
-    course_enrollment_info = _data_api().get_course_enrollment_info(course_id)
+    # If the client has requested an enrollment deactivation, we want to include expired modes
+    # in the set of available modes. This allows us to unenroll users from expired modes.
+    include_expired = not is_active if is_active is not None else False
+
+    course_enrollment_info = _data_api().get_course_enrollment_info(course_id, include_expired=include_expired)
     course_modes = course_enrollment_info["course_modes"]
     available_modes = [m['slug'] for m in course_modes]
     if mode not in available_modes:

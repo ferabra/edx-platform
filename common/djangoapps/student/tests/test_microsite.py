@@ -12,6 +12,8 @@ FAKE_MICROSITE = {
     "SITE_NAME": "openedx.localhost",
     "university": "fakeuniversity",
     "course_org_filter": "fakeorg",
+    "platform_name": "Fake University",
+    "email_from_address": "no-reply@fakeuniversity.com",
     "REGISTRATION_EXTRA_FIELDS": {
         "address1": "required",
         "city": "required",
@@ -46,6 +48,7 @@ def fake_microsite_get_value(name, default=None):
 class TestMicrosite(TestCase):
     """Test for Account Creation from a white labeled Micro-Sites"""
     def setUp(self):
+        super(TestMicrosite, self).setUp()
         self.username = "test_user"
         self.url = reverse("create_account")
         self.params = {

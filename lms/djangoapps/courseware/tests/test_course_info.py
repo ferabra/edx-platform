@@ -1,26 +1,30 @@
 """
 Test the course_info xblock
 """
-from django.core.urlresolvers import reverse
-from django.test.utils import override_settings
 import mock
+from nose.plugins.attrib import attr
+from urllib import urlencode
+
+from django.conf import settings
+from django.core.urlresolvers import reverse
 from opaque_keys.edx.locations import SlashSeparatedCourseKey
 
+from util.date_utils import strftime_localized
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
-from xmodule.modulestore.tests.django_utils import (
-    TEST_DATA_MOCK_MODULESTORE, TEST_DATA_MIXED_CLOSED_MODULESTORE
-)
+from xmodule.modulestore.tests.django_utils import TEST_DATA_MIXED_CLOSED_MODULESTORE
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory
+from student.models import CourseEnrollment
 
 from .helpers import LoginEnrollmentTestCase
 
 
-@override_settings(MODULESTORE=TEST_DATA_MOCK_MODULESTORE)
+@attr('shard_1')
 class CourseInfoTestCase(LoginEnrollmentTestCase, ModuleStoreTestCase):
     """
     Tests for the Course Info page
     """
     def setUp(self):
+        super(CourseInfoTestCase, self).setUp()
         self.course = CourseFactory.create()
         self.page = ItemFactory.create(
             category="course_info", parent_location=self.course.location,
@@ -47,12 +51,46 @@ class CourseInfoTestCase(LoginEnrollmentTestCase, ModuleStoreTestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn("OOGIE BLOOGIE", resp.content)
 
+    def test_logged_in_not_enrolled(self):
+        self.setup_user()
+        url = reverse('info', args=[self.course.id.to_deprecated_string()])
+        self.client.get(url)
 
-@override_settings(MODULESTORE=TEST_DATA_MIXED_CLOSED_MODULESTORE)
+        # Check whether the user has been enrolled in the course.
+        # There was a bug in which users would be automatically enrolled
+        # with is_active=False (same as if they enrolled and immediately unenrolled).
+        # This verifies that the user doesn't have *any* enrollment record.
+        enrollment_exists = CourseEnrollment.objects.filter(
+            user=self.user, course_id=self.course.id
+        ).exists()
+        self.assertFalse(enrollment_exists)
+
+    @mock.patch.dict(settings.FEATURES, {'DISABLE_START_DATES': False})
+    def test_non_live_course(self):
+        """Ensure that a user accessing a non-live course sees a redirect to
+        the student dashboard, not a 404.
+        """
+        self.setup_user()
+        self.enroll(self.course)
+        url = reverse('info', args=[unicode(self.course.id)])
+        response = self.client.get(url)
+        start_date = strftime_localized(self.course.start, 'SHORT_DATE')
+        self.assertRedirects(response, '{0}?{1}'.format(reverse('dashboard'), urlencode({'notlive': start_date})))
+
+    def test_nonexistent_course(self):
+        self.setup_user()
+        url = reverse('info', args=['not/a/course'])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+
+@attr('shard_1')
 class CourseInfoTestCaseXML(LoginEnrollmentTestCase, ModuleStoreTestCase):
     """
     Tests for the Course Info page for an XML course
     """
+    MODULESTORE = TEST_DATA_MIXED_CLOSED_MODULESTORE
+
     # The following XML test course (which lives at common/test/data/2014)
     # is closed; we're testing that a course info page still appears when
     # the course is already closed

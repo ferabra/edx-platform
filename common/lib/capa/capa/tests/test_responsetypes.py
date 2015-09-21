@@ -23,8 +23,24 @@ import calc
 from capa.responsetypes import LoncapaProblemError, \
     StudentInputError, ResponseError
 from capa.correctmap import CorrectMap
+from capa.tests.response_xml_factory import (
+    AnnotationResponseXMLFactory,
+    ChoiceResponseXMLFactory,
+    CodeResponseXMLFactory,
+    ChoiceTextResponseXMLFactory,
+    CustomResponseXMLFactory,
+    FormulaResponseXMLFactory,
+    ImageResponseXMLFactory,
+    JavascriptResponseXMLFactory,
+    MultipleChoiceResponseXMLFactory,
+    NumericalResponseXMLFactory,
+    OptionResponseXMLFactory,
+    SchematicResponseXMLFactory,
+    StringResponseXMLFactory,
+    SymbolicResponseXMLFactory,
+    TrueFalseResponseXMLFactory,
+)
 from capa.util import convert_files_to_filenames
-from capa.util import compare_with_tolerance
 from capa.xqueue_interface import dateformat
 
 
@@ -37,6 +53,7 @@ class ResponseTest(unittest.TestCase):
     maxDiff = None
 
     def setUp(self):
+        super(ResponseTest, self).setUp()
         if self.xml_factory_class:
             self.xml_factory = self.xml_factory_class()
 
@@ -76,7 +93,6 @@ class ResponseTest(unittest.TestCase):
 
 
 class MultiChoiceResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import MultipleChoiceResponseXMLFactory
     xml_factory_class = MultipleChoiceResponseXMLFactory
 
     def test_multiple_choice_grade(self):
@@ -98,7 +114,6 @@ class MultiChoiceResponseTest(ResponseTest):
 
 
 class TrueFalseResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import TrueFalseResponseXMLFactory
     xml_factory_class = TrueFalseResponseXMLFactory
 
     def test_true_false_grade(self):
@@ -136,9 +151,13 @@ class TrueFalseResponseTest(ResponseTest):
         self.assert_grade(problem, 'choice_foil_4', 'incorrect')
         self.assert_grade(problem, 'not_a_choice', 'incorrect')
 
+    def test_single_correct_response(self):
+        problem = self.build_problem(choices=[True, False])
+        self.assert_grade(problem, 'choice_0', 'correct')
+        self.assert_grade(problem, ['choice_0'], 'correct')
+
 
 class ImageResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import ImageResponseXMLFactory
     xml_factory_class = ImageResponseXMLFactory
 
     def test_rectangle_grade(self):
@@ -202,7 +221,6 @@ class ImageResponseTest(ResponseTest):
 
 
 class SymbolicResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import SymbolicResponseXMLFactory
     xml_factory_class = SymbolicResponseXMLFactory
 
     def test_grade_single_input_correct(self):
@@ -320,7 +338,6 @@ class SymbolicResponseTest(ResponseTest):
 
 
 class OptionResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import OptionResponseXMLFactory
     xml_factory_class = OptionResponseXMLFactory
 
     def test_grade(self):
@@ -346,12 +363,31 @@ class OptionResponseTest(ResponseTest):
         self.assert_grade(problem, "hasn\'t", "correct")
         self.assert_grade(problem, "has'nt", "incorrect")
 
+    def test_variable_options(self):
+        """
+        Test that if variable are given in option response then correct map must contain answervariable value.
+        """
+        script = textwrap.dedent("""\
+        a = 1000
+        b = a*2
+        c = a*3
+        """)
+        problem = self.build_problem(
+            options=['$a', '$b', '$c'],
+            correct_option='$a',
+            script=script
+        )
+
+        input_dict = {'1_2_1': '1000'}
+        correct_map = problem.grade_answers(input_dict)
+        self.assertEqual(correct_map.get_correctness('1_2_1'), 'correct')
+        self.assertEqual(correct_map.get_property('1_2_1', 'answervariable'), '$a')
+
 
 class FormulaResponseTest(ResponseTest):
     """
     Test the FormulaResponse class
     """
-    from capa.tests.response_xml_factory import FormulaResponseXMLFactory
     xml_factory_class = FormulaResponseXMLFactory
 
     def test_grade(self):
@@ -500,7 +536,6 @@ class FormulaResponseTest(ResponseTest):
 
 
 class StringResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import StringResponseXMLFactory
     xml_factory_class = StringResponseXMLFactory
 
     def test_backward_compatibility_for_multiple_answers(self):
@@ -708,6 +743,12 @@ class StringResponseTest(ResponseTest):
         # Other strings and the lowercase version of the string are incorrect
         self.assert_grade(problem, "Other String", "incorrect")
 
+    def test_compatible_non_attribute_additional_answer_xml(self):
+        problem = self.build_problem(answer="Donut", non_attribute_answers=["Sprinkles"])
+        self.assert_grade(problem, "Donut", "correct")
+        self.assert_grade(problem, "Sprinkles", "correct")
+        self.assert_grade(problem, "Meh", "incorrect")
+
     def test_partial_matching(self):
         problem = self.build_problem(answer="a2", case_sensitive=False, regexp=True, additional_answers=['.?\\d.?'])
         self.assert_grade(problem, "a3", "correct")
@@ -850,7 +891,6 @@ class StringResponseTest(ResponseTest):
 
 
 class CodeResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import CodeResponseXMLFactory
     xml_factory_class = CodeResponseXMLFactory
 
     def setUp(self):
@@ -1042,7 +1082,6 @@ class CodeResponseTest(ResponseTest):
 
 
 class ChoiceResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import ChoiceResponseXMLFactory
     xml_factory_class = ChoiceResponseXMLFactory
 
     def test_radio_group_grade(self):
@@ -1085,7 +1124,6 @@ class ChoiceResponseTest(ResponseTest):
 
 
 class JavascriptResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import JavascriptResponseXMLFactory
     xml_factory_class = JavascriptResponseXMLFactory
 
     def test_grade(self):
@@ -1126,7 +1164,6 @@ class JavascriptResponseTest(ResponseTest):
 
 
 class NumericalResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import NumericalResponseXMLFactory
     xml_factory_class = NumericalResponseXMLFactory
 
     # We blend the line between integration (using evaluator) and exclusively
@@ -1351,7 +1388,6 @@ class NumericalResponseTest(ResponseTest):
 
 
 class CustomResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import CustomResponseXMLFactory
     xml_factory_class = CustomResponseXMLFactory
 
     def test_inline_code(self):
@@ -1903,7 +1939,6 @@ class SchematicResponseTest(ResponseTest):
     """
     Class containing setup and tests for Schematic responsetype.
     """
-    from capa.tests.response_xml_factory import SchematicResponseXMLFactory
     xml_factory_class = SchematicResponseXMLFactory
 
     def test_grade(self):
@@ -1954,7 +1989,6 @@ class SchematicResponseTest(ResponseTest):
 
 
 class AnnotationResponseTest(ResponseTest):
-    from capa.tests.response_xml_factory import AnnotationResponseXMLFactory
     xml_factory_class = AnnotationResponseXMLFactory
 
     def test_grade(self):
@@ -1996,7 +2030,6 @@ class ChoiceTextResponseTest(ResponseTest):
     Class containing setup and tests for ChoiceText responsetype.
     """
 
-    from response_xml_factory import ChoiceTextResponseXMLFactory
     xml_factory_class = ChoiceTextResponseXMLFactory
 
     # `TEST_INPUTS` is a dictionary mapping from
@@ -2166,13 +2199,6 @@ class ChoiceTextResponseTest(ResponseTest):
         """
         with self.assertRaises(Exception):
             self.build_problem(type="invalidtextgroup")
-
-    def test_valid_xml(self):
-        """
-        Test that `build_problem` builds valid xml
-        """
-        self.build_problem()
-        self.assertTrue(True)
 
     def test_unchecked_input_not_validated(self):
         """

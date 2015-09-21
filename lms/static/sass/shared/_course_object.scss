@@ -13,23 +13,6 @@
       }
     }
 
-    .courses-listing {
-      @include clearfix();
-      margin: 0;
-      padding: 0;
-      list-style: none;
-
-      .courses-listing-item {
-        width: flex-grid(4);
-        @include margin-right(flex-gutter());
-        @include float(left);
-
-        &:nth-child(3n+3) {
-          @include margin-right(0);
-        }
-      }
-    }
-
     .course {
       background: $body-bg;
       border: 1px solid $border-color-1;
@@ -243,7 +226,7 @@
       &:hover, &:focus {
         background: $course-profile-bg;
         border-color: $border-color-1;
-        box-shadow: 0 1px 16px 0 rgba($shadow-color, 0.4);
+        box-shadow: 0 1px 4px 0 rgba($shadow-color, 0.4);
 
         .info {
           top: -150px;

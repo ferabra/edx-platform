@@ -11,6 +11,10 @@ from .utils.envs import Env
 
 PREREQS_MD5_DIR = os.getenv('PREREQ_CACHE_DIR', Env.REPO_ROOT / '.prereqs_cache')
 NPM_REGISTRY = "http://registry.npmjs.org/"
+
+# If you make any changes to this list you also need to make
+# a corresponding change to circle.yml, which is how the python
+# prerequisites are installed for builds on circleci.com
 PYTHON_REQ_FILES = [
     'requirements/edx/pre.txt',
     'requirements/edx/github.txt',
@@ -134,7 +138,7 @@ def python_prereqs_installation():
     Installs Python prerequisites
     """
     for req_file in PYTHON_REQ_FILES:
-        sh("pip install -q --exists-action w -r {req_file}".format(req_file=req_file))
+        sh("pip install -q --disable-pip-version-check --exists-action w -r {req_file}".format(req_file=req_file))
 
 
 @task

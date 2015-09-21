@@ -5,23 +5,218 @@
 # pylint: disable=unused-argument
 
 import os
-from path import path
+from path import Path as path
 import sys
 import mock
- 
-MOCK_MODULES = ['lxml', 'requests', 'xblock', 'fields', 'xblock.fields',
-'frament', 'xblock.fragment', 'webob', 'multidict', 'webob.multidict', 'core',
-'xblock.core', 'runtime', 'xblock.runtime', 'sortedcontainers', 'contracts',
-'plugin', 'xblock.plugin', 'opaque_keys.edx.asides', 'asides',
-'dogstats_wrapper', 'fs', 'fs.errors', 'edxmako', 'edxmako.shortcuts',
-'shortcuts', 'crum', 'opaque_keys.edx.locator', 'LibraryLocator', 'Location']
 
-for mod_name in MOCK_MODULES: 
-    sys.modules[mod_name] = mock.Mock()
+MOCK_MODULES = [
+    'lxml',
+    'requests',
+    'xblock',
+    'fields',
+    'xblock.fields',
+    'frament',
+    'xblock.fragment',
+    'webob',
+    'multidict',
+    'webob.multidict',
+    'core',
+    'xblock.core',
+    'runtime',
+    'xblock.runtime',
+    'sortedcontainers',
+    'contracts',
+    'plugin',
+    'xblock.plugin',
+    'opaque_keys.edx.asides',
+    'asides',
+    'dogstats_wrapper',
+    'fs',
+    'fs.errors',
+    'edxmako',
+    'edxmako.shortcuts',
+    'shortcuts',
+    'crum',
+    'opaque_keys.edx.locator',
+    'LibraryLocator',
+    'Location',
+    'ipware',
+    'ip',
+    'ipware.ip',
+    'get_ip',
+    'pygeoip',
+    'ipaddr',
+    'django_countries',
+    'fields',
+    'django_countries.fields',
+    'opaque_keys',
+    'opaque_keys.edx',
+    'opaque_keys.edx.keys',
+    'CourseKey',
+    'UsageKey',
+    'BlockTypeKey',
+    'opaque_keys.edx.locations',
+    'SlashSeparatedCourseKey',
+    'Locator',
+    'south',
+    'modelsinspector',
+    'south.modelsinspector',
+    'add_introspection_rules',
+    'courseware',
+    'access',
+    'courseware.access',
+    'is_mobile_available_for_user',
+    'courseware.model_data',
+    'courseware.module_render',
+    'courseware.views',
+    'util.request',
+    'eventtracking',
+    'xmodule',
+    'xmodule.exceptions',
+    'xmodule.modulestore',
+    'xmodule.modulestore.exceptions',
+    'xmodule.modulestore.django',
+    'courseware.models',
+    'milestones',
+    'milestones.api',
+    'milestones.models',
+    'milestones.exceptions',
+    'ratelimitbackend',
+    'analytics',
+    'courseware.courses',
+    'staticfiles',
+    'storage',
+    'staticfiles.storage',
+    'content',
+    'xmodule.contentstore',
+    'xmodule.contentstore.content',
+    'xblock.exceptions',
+    'xmodule.seq_module',
+    'xmodule.vertical_module',
+    'xmodule.x_module',
+    'nltk',
+    'ratelimitbackend',
+    'ratelimitbackend.exceptions',
+    'social',
+    'social.apps',
+    'social.apps.django_app',
+    'social.backends',
+    'mako',
+    'exceptions',
+    'mako.exceptions',
+    'boto',
+    'exception',
+    'boto.exception',
+    'PIL',
+    'reportlab',
+    'lib',
+    'reportlab.lib',
+    'pdfgen',
+    'canvas',
+    'pdfgen',
+    'pdfgen.canvas',
+    'reportlab.pdfgen',
+    'reportlab.pdfgen.canvas',
+    'reportlab.lib.pagesizes',
+    'reportlab.lib.units',
+    'reportlab.lib.styles',
+    'reportlab.platypus',
+    'reportlab.platypus.tables',
+    'boto',
+    's3',
+    'connection',
+    'boto.s3',
+    'boto.s3.connection',
+    'boto.s3.key',
+    'Crypto',
+    'Crypto.Cipher',
+    'Crypto.PublicKey',
+    'openid',
+    'store',
+    'interface',
+    'openid.store',
+    'store.interface',
+    'openid.store.interface',
+    'external_auth.views',
+    'html_to_text',
+    'mail_utils',
+    'ratelimitbackend.backends',
+    'social.apps.django_app.default',
+    'social.exceptions',
+    'social.pipeline',
+    'xmodule.error_module',
+    'accounts.api',
+    'modulestore.mongo.base',
+    'xmodule.modulestore.mongo',
+    'xmodule.modulestore.mongo.base',
+    'edxval',
+    'edxval.api',
+    'model_utils',
+    'model_utils.models',
+    'model_utils.managers',
+    'certificates',
+    'certificates.models',
+    'certificates.models.GeneratedCertificate',
+    'shoppingcart',
+    'shopppingcart.models',
+    'shopppingcart.api',
+    'api',
+    'student',
+    'student.views',
+    'student.forms',
+    'student.models',
+    'celery',
+    'celery.task',
+    'student.roles',
+    'embargo.models',
+    'xmodule.vertical_block',
+    'vertical_block',
+    'errors',
+    'UserNotFound',
+    'UserNotAuthorized',
+    'AccountUpdateError',
+    'AccountValidationError',
+    'transaction',
+    'parsers',
+    'MergePatchParser',
+    'get_account_settings',
+    'update_account_settings',
+    'serializers',
+    'profile_images.images',
+    'xmodule.course_module',
+    'user_api.accounts.api',
+    'user_api.accounts.serializers',
+    'ecommerce_api_client',
+    'client',
+    'ecommerce_api_client.client',
+    'ecommerce_api_client.exceptions',
+    'student.auth',
+    'ccx_keys',
+    'ccx_keys.locator',
+    'user_api.preferences.api'
+]
+
+for mod_name in MOCK_MODULES:
+    sys.modules[mod_name] = mock.Mock(class_that_is_extended=object)
+
+if "DJANGO_SETTINGS_MODULE" not in os.environ:
+    docs_path = os.getcwd()
+    mezzanine_path_parts = (docs_path, "..")
+    sys.path.insert(0, docs_path)
+    sys.path.insert(0, os.path.realpath(os.path.join(*mezzanine_path_parts)))
+    os.environ["DJANGO_SETTINGS_MODULE"] = "docs_settings"
+    # Django 1.7's setup is required before touching translated strings.
+    import django
+    try:
+        django.setup()
+    except AttributeError:  # < 1.7
+        pass
 
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 sys.path.append('../../../../')
+os.environ['DJANGO_SETTINGS_MODULE'] = 'lms.envs.dev'
+#os.environ.setdefault("DJANGO_SETTINGS_MODULE", "lms.envs.dev")
 
 from docs.shared.conf import *
 
@@ -47,11 +242,10 @@ if not on_rtd:  # only import and set the theme if we're building docs locally
 root = path('../../../..').abspath()
 sys.path.insert(0, root)
 sys.path.append(root / "common/lib/xmodule")
+sys.path.append(root / "common/djangoapps")
 sys.path.append(root / "lms/djangoapps")
-sys.path.append(root / "lms/djangoapps/mobile_api")
-sys.path.append(root / "lms/djangoapps/mobile_api/course_info")
-sys.path.append(root / "lms/djangoapps/mobile_api/users")
-sys.path.append(root / "lms/djangoapps/mobile_api/video_outlines")
+sys.path.append(root / "lms/envs")
+sys.path.append(root / "openedx/core/djangoapps")
 
 sys.path.insert(
     0,
@@ -79,9 +273,7 @@ extensions = [
     'sphinx.ext.todo', 'sphinx.ext.coverage', 'sphinx.ext.pngmath',
     'sphinx.ext.mathjax', 'sphinx.ext.viewcode', 'sphinxcontrib.napoleon']
 
-project = u'edX Platform API Version 0.5 Alpha'
+project = u'EdX Platform APIs'
 copyright = u'2015, edX'
 
 exclude_patterns = ['build', 'links.rst']
-
-

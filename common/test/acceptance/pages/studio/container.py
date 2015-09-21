@@ -6,7 +6,9 @@ from bok_choy.page_object import PageObject
 from bok_choy.promise import Promise, EmptyPromise
 from . import BASE_URL
 
-from .utils import click_css, confirm_prompt, type_in_codemirror
+from ..common.utils import click_css, confirm_prompt
+
+from .utils import type_in_codemirror
 
 
 class ContainerPage(PageObject):
@@ -209,7 +211,7 @@ class ContainerPage(PageObject):
 
     def preview(self):
         """
-        Clicks "Preview Changes", which will open the draft version of the unit page in the LMS.
+        Clicks "Preview", which will open the draft version of the unit page in the LMS.
 
         Switches the browser to the newly opened LMS window.
         """
@@ -280,6 +282,36 @@ class ContainerPage(PageObject):
         Return whether this container's display name is in its editable form.
         """
         return "is-editing" in self.q(css=self.NAME_FIELD_WRAPPER_SELECTOR).first.attrs("class")[0]
+
+    def get_category_tab_names(self, category_type):
+        """
+        Returns list of tab name in a category.
+
+        Arguments:
+            category_type (str): category type
+
+        Returns:
+            list
+        """
+        self.q(css='.add-xblock-component-button[data-type={}]'.format(category_type)).first.click()
+        return self.q(css='.{}-type-tabs>li>a'.format(category_type)).text
+
+    def get_category_tab_components(self, category_type, tab_index):
+        """
+        Return list of component names in a tab in a category.
+
+        Arguments:
+            category_type (str): category type
+            tab_index (int): tab index in a category
+
+        Returns:
+            list
+        """
+        css = '#tab{tab_index} button[data-category={category_type}] span'.format(
+            tab_index=tab_index,
+            category_type=category_type
+        )
+        return self.q(css=css).html
 
 
 class XBlockWrapper(PageObject):
@@ -407,6 +439,20 @@ class XBlockWrapper(PageObject):
         return self.q(css=self._bounded_selector('.wrapper-xblock.has-group-visibility-set')).is_present()
 
     @property
+    def has_duplicate_button(self):
+        """
+        Returns true if this xblock has a 'duplicate' button
+        """
+        return self.q(css=self._bounded_selector('a.duplicate-button'))
+
+    @property
+    def has_delete_button(self):
+        """
+        Returns true if this xblock has a 'delete' button
+        """
+        return self.q(css=self._bounded_selector('a.delete-button'))
+
+    @property
     def has_edit_visibility_button(self):
         """
         Returns true if this xblock has an 'edit visibility' button
@@ -473,6 +519,19 @@ class XBlockWrapper(PageObject):
         """
         type_in_codemirror(self, index, text, find_prefix='$("{}").find'.format(self.editor_selector))
 
+    def set_license(self, license_type):
+        """
+        Uses the UI to set the course's license to the given license_type (str)
+        """
+        css_selector = (
+            "ul.license-types li[data-license={license_type}] button"
+        ).format(license_type=license_type)
+        self.wait_for_element_presence(
+            css_selector,
+            "{license_type} button is present".format(license_type=license_type)
+        )
+        self.q(css=css_selector).click()
+
     def save_settings(self):
         """
         Click on settings Save button.
@@ -499,6 +558,12 @@ class XBlockWrapper(PageObject):
         Go to the Group Configuration used by the component.
         """
         self.q(css=self._bounded_selector('span.message-text a')).first.click()
+
+    def is_placeholder(self):
+        """
+        Checks to see if the XBlock is rendered as a placeholder without a preview.
+        """
+        return not self.q(css=self._bounded_selector('.wrapper-xblock article')).present
 
     @property
     def group_configuration_link_name(self):

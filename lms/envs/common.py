@@ -1399,10 +1399,10 @@ PIPELINE_CSS = {
     },
      'style-main': {
          # this is unnecessary and can be removed
-    #     'source_filenames': [
-    #         'css/lms-main.css',
-    #     ],
-    #     'output_filename': 'css/lms-main.css',
+         'source_filenames': [
+             'css/lms-main.css',
+         ],
+         'output_filename': 'css/lms-main.css',
      },
     'style-main-rtl': {
         # this is unnecessary and can be removed

@@ -509,6 +509,20 @@ PIPELINE_CSS = {
         ],
         'output_filename': 'css/cms-style-vendor.css',
     },
+    'style-main': {
+        # this is unnecessary and can be removed
+        'source_filenames': [
+            'css/studio-main.css',
+        ],
+        'output_filename': 'css/studio-main.css',
+    },
+    'style-main-rtl': {
+        # this is unnecessary and can be removed
+        'source_filenames': [
+            'css/studio-main-rtl.css',
+        ],
+        'output_filename': 'css/studio-main-rtl.css',
+    },
     'style-vendor-tinymce-content': {
         'source_filenames': [
             'css/tinymce-studio-content-fonts.css',

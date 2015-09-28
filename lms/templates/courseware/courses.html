@@ -6,7 +6,6 @@
 %>
 <%inherit file="../main.html" />
 <%
-<<<<<<< HEAD
   platform_name = microsite.get_value('platform_name', settings.PLATFORM_NAME)
 
   if self.stanford_theme_enabled():
@@ -16,10 +15,10 @@
 
   else:
     course_index_overlay_text = microsite.get_value('course_index_overlay_text', _("Explore courses from {platform_name}.").format(platform_name=platform_name))
-=======
+
   course_discovery_enabled = settings.FEATURES.get('ENABLE_COURSE_DISCOVERY')
 %>
->>>>>>> upstream/master
+
 
 <%namespace name='static' file='../static_content.html'/>
 
@@ -60,7 +59,6 @@
       </form>
     </div>
 
-<<<<<<< HEAD
   <header class="search">
     <div class="inner-wrapper main-search">
       <hgroup>
@@ -68,9 +66,7 @@
         </div>
         <h2>${course_index_overlay_text}</h2>
       </hgroup>
-=======
     <div id="filter-bar" class="filters hide-phone is-collapsed">
->>>>>>> upstream/master
     </div>
     % endif
 

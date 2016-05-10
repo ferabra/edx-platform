@@ -13016,7 +13016,7 @@ msgstr "filtrar tópicos"
 #: lms/templates/discussion/_filter_dropdown.html
 #: lms/templates/discussion/_thread_list_template.html
 msgid "All Discussions"
-msgstr ""
+msgstr "Todas as discussões"
 
 #: lms/templates/discussion/_filter_dropdown.html
 msgid "Posts I'm Following"
@@ -13040,7 +13040,7 @@ msgstr "Tópicos para discussão. A seleção atual é:"
 
 #: lms/templates/discussion/_thread_list_template.html
 msgid "Search all posts"
-msgstr ""
+msgstr "Pesquisar todos os posts"
 
 #. Translators: This labels a filter menu in forum navigation
 #: lms/templates/discussion/_thread_list_template.html
@@ -13080,17 +13080,17 @@ msgstr ""
 #. Translators: This is a menu option for sorting forum threads
 #: lms/templates/discussion/_thread_list_template.html
 msgid "by recent activity"
-msgstr ""
+msgstr "por atividade recente"
 
 #. Translators: This is a menu option for sorting forum threads
 #: lms/templates/discussion/_thread_list_template.html
 msgid "by most activity"
-msgstr ""
+msgstr "por maioria de atividade"
 
 #. Translators: This is a menu option for sorting forum threads
 #: lms/templates/discussion/_thread_list_template.html
 msgid "by most votes"
-msgstr ""
+msgstr "pela maioria dos votos"
 
 #: lms/templates/discussion/_user_profile.html
 #, python-format
@@ -20162,3 +20162,30 @@ msgstr ""
 "alcance regional que trabalha desde 1989 nas áreas da saúde pública  com perspectiva  "
 "de direitos humanos focada no HIV/SIDA, outras doenças transmissíveis, "
 ", saúde sexual e reprodutiva.  @ e-huesped 2015. Todos os direitos reservados. "
+
+msgid "Homewor"
+msgstr "Tarea"
+
+msgid "Pass"
+msgstr "Passado"
+
+msgid "Fail"
+msgstr "Falhou"
+
+msgid "Connected Accounts"
+msgstr "Contas Conectadas"
+
+msgid "Discussion Home"
+msgstr "Discussão Principal"
+
+msgid "Unfollow"
+msgstr "Deixar de Seguir"
+
+msgid "More"
+msgstr "Mais"
+
+msgid "Report"
+msgstr "Relatório"
+
+msgid "This post is visible to everyone"
+msgstr "Essa publicação é visível para todos"

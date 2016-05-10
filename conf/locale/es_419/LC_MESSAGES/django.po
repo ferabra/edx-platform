@@ -11326,6 +11326,7 @@ msgstr "Ayuda"
 msgid "Sign Out"
 msgstr "Cerrar sesión"
 
+
 <<<<<<< HEAD
 #: common/templates/course_modes/choose.html
 msgid "Upgrade Your Enrollment for {} | Choose Your Track"
@@ -25139,3 +25140,22 @@ msgstr ""
 "alcance regional que trabaja desde 1989 en áreas de salud pública desde una perspectiva  "
 "de derechos humanos centrada en VIH/sida, otras enfermedades transmisibles "
 " en salud sexual y reproductiva. @ e-huesped 2015. Todos los derechos reservados. "
+
+msgid "Sign out"
+msgstr "Cerrar sesión"
+
+msgid "Reset password"
+msgstr "Restablecer contraseña"
+
+msgid "Homework"
+msgstr "Tarea"
+
+msgid "Pass"
+msgstr "Aprobado"
+
+msgid "Fail"
+msgstr "No Aprobado"
+
+msgid "Course started"
+msgstr "Curso comenzado"
+
